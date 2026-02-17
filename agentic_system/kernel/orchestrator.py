@@ -222,100 +222,96 @@ class FlowEngine:
         command = str(params.get("command") or params.get("cmd") or f"echo {task.get('purpose', 'task')}")
         return {"executor": "Bash", "command": command}
 
-   
-
     def _run_working_loop(self, state: StorageEngine) -> None:
-        self._ensure_working_fields(state)
+        self._ensure_runtime_fields(state)
 
-        action = self.env_info.get("action")
+        state.terminated = False
+        state.final_report = None
+        max_turns = int(self.limits.get("max_inner_turns", 60))
         turns = 0
-        while action != "none":
+
+        while turns < max_turns and not state.terminated:
             turns += 1
-            if action == "call_llm":
-                action_input = self.env_info.get("action_input", {})
-                agent_role = str(action_input.get("agent_role", "core_agent")).strip()
-                fallback_role = "core_agent" if self._agent_kind_for_role(agent_role) == "core" else "sub_agent"
-                system_prompt = self.prompt_engine.get_system_prompt(agent_role, fallback_role=fallback_role)
-                action_input["agent_role"] = agent_role
-                action_input["system_prompt"] = system_prompt
-                self.env_info["action_input"] = action_input
-            caps = self.load_capability_snapshot(agent_role)
-            self.compact_history_if_needed(
-                state=state,
-                caps=caps,
-                step_prompt=self.prompt_engine.get_step_prompt(current_step),
-                agent_role=agent_role,
-                objective=objective,
-            )
-            llm_out = self.call_step_llm(
-                state=state,
-                current_step=current_step,
-                caps=caps,
-                agent_role=agent_role,
-                objective=objective,
-            )
+            current = self.action_info if isinstance(self.action_info, dict) else {}
+            action_raw = current.get("action")
+            action = str(action_raw).strip().lower() if action_raw is not None else "none"
+            if action in TERMINAL_TOKENS:
+                state.terminated = True
+                break
+
+            if action != "call_llm":
+                state.update_state(
+                    role="runtime",
+                    text=f"unsupported_action> : {action}",
+                    prompt_engine=self.prompt_engine,
+                    model_router=self.model_router,
+                )
+                state.final_report = f"Unsupported action: {action}"
+                state.terminated = True
+                break
+
+            action_input = current.get("action_input", {})
+            if not isinstance(action_input, dict):
+                action_input = {}
+
+            agent_role_raw = action_input.get("agent_role")
+            if not isinstance(agent_role_raw, str) or not agent_role_raw.strip():
+                state.update_state(
+                    role="runtime",
+                    text="invalid_action_input> : call_llm requires action_input.agent_role",
+                    prompt_engine=self.prompt_engine,
+                    model_router=self.model_router,
+                )
+                state.final_report = "Invalid action_input for call_llm: missing agent_role."
+                state.terminated = True
+                break
+            agent_role = agent_role_raw.strip()
+            fallback_role = "core_agent"
+            system_prompt = self.prompt_engine.get_system_prompt(agent_role, fallback_role=fallback_role)
+            step_name = str(action_input.get("step_name", "")).strip()
+            step_prompt = self.prompt_engine.get_step_prompt(step_name) if step_name else ""
+            task_type = str(action_input.get("task_type", "thinking")).strip() or "thinking"
+            prompt_input = {
+                "workflow_summary": action_input.get("workflow_summary", state.workflow_summary),
+                "workflow_history": action_input.get("workflow_history", state.workflow_hist),
+            }
+            prompt = build_prompt(system_prompt, step_prompt, prompt_input)
+            try:
+                llm_out = self.model_router.generate(prompt=prompt, task_type=task_type)
+            except Exception as exc:
+                llm_out = {
+                    "raw_response": f"[Model error] {exc}",
+                    "action": "none",
+                    "action_input": {},
+                }
+            if not isinstance(llm_out, dict):
+                llm_out = {"raw_response": "", "action": "none", "action_input": {}}
+
+            raw_response = llm_out.get("raw_response")
+            raw_response_text = raw_response if isinstance(raw_response, str) else ""
             state.update_state(
                 role=agent_role,
-                text=llm_out.get("raw_response", ""),
+                text=raw_response_text,
                 prompt_engine=self.prompt_engine,
                 model_router=self.model_router,
             )
 
-            structured = llm_out.get("action_input", {})
-            if not isinstance(structured, dict):
-                structured = {}
-            forced: str | None = None
-
-            try:
-                if current_step == "context":
-                    self.handle_context(state, structured)
-                elif current_step == "retrieve_ltm":
-                    self.handle_retrieve_ltm(state, structured)
-                elif current_step == "plan":
-                    self.handle_plan(state, structured, caps)
-                elif current_step == "do_tasks":
-                    forced = self.handle_do_tasks(state, structured, agent_role).get("force_next_step")
-                elif current_step == "act":
-                    out = self.handle_act(state, structured)
-                    forced = out.get("force_next_step")
-                    if out.get("status") == "success":
-                        actions_executed += 1
-                elif current_step == "verify":
-                    forced = self.handle_verify(state, structured).get("force_next_step")
-                elif current_step == "iterate":
-                    forced = self.handle_iterate(state, structured).get("force_next_step")
-                elif current_step == "create_sub_agent":
-                    forced = self.handle_create_sub_agent(state, structured, agent_role).get("force_next_step")
-                elif current_step == "assign_task":
-                    forced = self.handle_assign_task(state, structured, depth, agent_role).get("force_next_step")
-                elif current_step == "document":
-                    forced = self.handle_document(state, structured).get("force_next_step")
-                elif current_step == "create_skill":
-                    forced = self.handle_create_skill(state, structured).get("force_next_step")
-                elif current_step == "promotion_check":
-                    forced = self.handle_promotion_check(state, structured).get("force_next_step")
-                elif current_step == "report":
-                    forced = self.handle_report(state, llm_out.get("raw_response", "")).get("force_next_step")
-            except Exception as exc:
-                state.update_state(
-                    role="runtime",
-                    text=f"handler_error> : {current_step}: {exc}",
-                    prompt_engine=self.prompt_engine,
-                    model_router=self.model_router,
-                )
-                forced = "report"
-
-            if actions_executed >= int(limits["max_exec_actions"]):
-                current_step = "report"
-                continue
-
-            proposed_next = forced if forced is not None else llm_out.get("action")
-            next_action = self.validate_action_or_repair(state, proposed_next, agent_role, objective)
+            next_action_raw = llm_out.get("action")
+            next_action = str(next_action_raw).strip().lower() if next_action_raw is not None else "none"
+            next_action_input = llm_out.get("action_input", {})
+            if not isinstance(next_action_input, dict):
+                next_action_input = {}
+            next_action_input.setdefault("agent_role", agent_role)
+            next_action_input.setdefault("workflow_summary", state.workflow_summary)
+            next_action_input.setdefault("workflow_history", state.workflow_hist)
+            self.action_info = {
+                "action": next_action,
+                "action_input": next_action_input,
+            }
 
             if next_action in TERMINAL_TOKENS:
+                state.final_report = raw_response_text
                 state.terminated = True
-                if not state.final_report:
-                    state.final_report = llm_out.get("raw_response", "Loop complete.")
                 state.update_state(
                     role="runtime",
                     text=f"loop_end> : {state.final_report}",
@@ -324,10 +320,18 @@ class FlowEngine:
                 )
                 break
 
-            current_step = str(next_action)
+        if not state.terminated and turns >= max_turns:
+            state.terminated = True
+            state.final_report = state.final_report or "Loop ended by runtime limits."
+            state.update_state(
+                role="runtime",
+                text=f"loop_end> : {state.final_report}",
+                prompt_engine=self.prompt_engine,
+                model_router=self.model_router,
+            )
 
-        if not state.final_report:
-            state.final_report = "Loop ended by runtime limits."
+        if state.final_report is None:
+            state.final_report = ""
         state.save_state()
 
     def run_core_session(
@@ -369,9 +373,7 @@ class FlowEngine:
             self.action_info = {
                 "action": "call_llm",
                 "action_input": {
-                    "agent_role": "core_agent",
-                    "workflow_summary": state.workflow_summary,
-                    "workflow_history": state.workflow_hist,
+                    "agent_role": "core_agent"
                 }
             }
             self._run_working_loop(state=state)

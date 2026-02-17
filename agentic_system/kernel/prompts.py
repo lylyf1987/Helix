@@ -9,6 +9,7 @@ _PACKAGED_PROMPTS_ROOT = Path(__file__).resolve().parents[1] / "prompts"
 _SYSTEM_PROMPTS_PATH = _PACKAGED_PROMPTS_ROOT / "agent_system_prompt.json"
 _STEP_PROMPTS_PATH = _PACKAGED_PROMPTS_ROOT / "agent_step_prompt.json"
 _ROLE_DESCRIPTIONS_PATH = _PACKAGED_PROMPTS_ROOT / "agent_role_description.json"
+_AGENT_ROLES_PLACEHOLDER = "{{AGENT_ROLES_FROM_JSON}}"
 _REQUIRED_STEPS = (
     "context",
     "retrieve_ltm",
@@ -68,12 +69,30 @@ class PromptEngine:
     def get_system_prompt(self, agent_role: str, fallback_role: str = "core_agent") -> str:
         prompts = self._load_system_prompts()
         role = str(agent_role).strip()
+        selected = ""
         if role and role in prompts and prompts[role].strip():
-            return prompts[role]
-        fallback = str(fallback_role).strip()
-        if fallback and fallback in prompts and prompts[fallback].strip():
-            return prompts[fallback]
-        return ""
+            selected = prompts[role]
+        else:
+            fallback = str(fallback_role).strip()
+            if fallback and fallback in prompts and prompts[fallback].strip():
+                selected = prompts[fallback]
+        if not selected:
+            return ""
+
+        descriptions = self._load_json_map(self.agent_role_descriptions_path)
+        lines = ["Agent Roles (Loaded from agent_role_description.json):"]
+        if descriptions:
+            for item_role in sorted(descriptions.keys()):
+                desc = str(descriptions.get(item_role, "")).strip()
+                lines.append(f"- {item_role}: {desc if desc else '(no description)'}")
+        else:
+            lines.append("- (no role descriptions found)")
+        roles_section = "\n".join(lines)
+
+        text = selected.strip()
+        if _AGENT_ROLES_PLACEHOLDER in text:
+            return text.replace(_AGENT_ROLES_PLACEHOLDER, roles_section)
+        return text + "\n\n" + roles_section
 
     def list_agent_roles_with_descriptions(self) -> dict[str, str]:
         prompts = self._load_system_prompts()
