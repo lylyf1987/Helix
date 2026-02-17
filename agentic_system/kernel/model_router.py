@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
@@ -183,45 +184,18 @@ class ModelRouter:
         if not raw:
             return None
 
-        try:
-            parsed = json.loads(raw)
-            if isinstance(parsed, dict):
-                return parsed
-        except json.JSONDecodeError:
-            pass
-
-        start = raw.find("{")
-        if start < 0:
+        match = re.search(r"<output>(.*?)</output>", raw, flags=re.IGNORECASE | re.DOTALL)
+        if not match:
             return None
-        depth = 0
-        in_string = False
-        escaped = False
-        for idx in range(start, len(raw)):
-            ch = raw[idx]
-            if in_string:
-                if escaped:
-                    escaped = False
-                elif ch == "\\":
-                    escaped = True
-                elif ch == '"':
-                    in_string = False
-                continue
-            if ch == '"':
-                in_string = True
-                continue
-            if ch == "{":
-                depth += 1
-            elif ch == "}":
-                depth -= 1
-                if depth == 0:
-                    candidate = raw[start : idx + 1]
-                    try:
-                        parsed = json.loads(candidate)
-                    except json.JSONDecodeError:
-                        return None
-                    if isinstance(parsed, dict):
-                        return parsed
-                    return None
+        block = match.group(1).strip()
+        if not block:
+            return None
+        try:
+            parsed = json.loads(block)
+        except json.JSONDecodeError:
+            return None
+        if isinstance(parsed, dict):
+            return parsed
         return None
 
     def generate(
@@ -235,28 +209,7 @@ class ModelRouter:
             model=model,
             prompt=prompt,
         )
-        text = response.text or ""
-        payload = self._parse_json_payload(text)
-        if payload is None:
-            return {
-                "action": "report",
-                "raw_response": text.strip() or "I could not parse step output; stopping safely.",
-                "action_input": {},
-            }
-
-        if "raw_response" not in payload:
-            payload["raw_response"] = text.strip() or ""
-        if "action" not in payload:
-            payload["action"] = payload.get("next_step", "report")
-        if "action_input" not in payload:
-            if isinstance(payload.get("next_step_input"), dict):
-                payload["action_input"] = payload["next_step_input"]
-            elif isinstance(payload.get("structured_info"), dict):
-                payload["action_input"] = payload["structured_info"]
-            else:
-                payload["action_input"] = {}
-        if not isinstance(payload.get("action_input"), dict):
-            payload["action_input"] = {}
-        if payload.get("action") in (None, ""):
-            payload["action"] = "report"
-        return payload
+        payload = self._parse_json_payload(response.text or "")
+        if isinstance(payload, dict):
+            return payload
+        return {}

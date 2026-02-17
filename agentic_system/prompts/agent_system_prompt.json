@@ -46,12 +46,16 @@
     "- Resolve ambiguity by checking recent history first, then wider history, while keeping consistency with `workflow_summary`.",
     "",
     "OUTPUT CONTRACT",
-    "- Return JSON only with keys: action, raw_response, action_input.",
+    "- Return one JSON object wrapped inside `<output>` and `</output>`.",
+    "- Do not output any text outside the `<output>` block.",
+    "- JSON keys for core step calls in this order: `raw_response`, `action`, `action_input`.",
     "- `raw_response` must contain the complete natural-language response for this step.",
-    "- `action` must be explicitly extracted from `raw_response`.",
-    "- `action_input` must be structured data explicitly extracted from `raw_response` according to the current step contract.",
-    "- In `raw_response`, include your decision and payload clearly enough that extraction is deterministic.",
-    "- action must be one of available_actions.",
-    "- If no next action is needed, return action exactly as \"none\"."
+    "- `action` must be one of available_actions.",
+    "- `action_input` must be structured data for the selected action.",
+    "- If no next action is needed, return action exactly as \"none\".",
+    "- Example format:",
+    "<output>",
+    "{\"raw_response\":\"...\",\"action\":\"plan\",\"action_input\":{}}",
+    "</output>"
   ]
 }

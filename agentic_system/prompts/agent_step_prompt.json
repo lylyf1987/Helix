@@ -16,7 +16,13 @@
     "2) Current status: done, in progress, blocked.",
     "3) Current focus and immediate next useful direction.",
     "4) Prioritize recent workflow_history while preserving key earlier context.",
-    "Return JSON only with this schema:",
-    "{\"workflow_summary\":\"...\"}"
+    "Return one JSON object wrapped in <output> and </output>.",
+    "Do not output any text outside that block.",
+    "Schema inside the block:",
+    "{\"workflow_summary\":\"...\"}",
+    "Example:",
+    "<output>",
+    "{\"workflow_summary\":\"...\"}",
+    "</output>"
   ]
 }

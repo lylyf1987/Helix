@@ -15,7 +15,6 @@ from .prompts import (
     PromptEngine,
     AGENT_ROLE_DESCRIPTIONS_DEFAULT,
     SYSTEM_PROMPTS_BY_ROLE_DEFAULT,
-    SYSTEM_PROMPT_SUB,
     build_prompt,
 )
 from .skills import SkillEngine
@@ -56,7 +55,7 @@ class FlowEngine:
         self.limits = deepcopy(DEFAULT_LIMITS)
         if limits:
             self.limits.update(limits)
-        self.env_info = None
+        self.action_info = None
 
     def _ensure_runtime_fields(self, state: StorageEngine) -> None:
         if not isinstance(getattr(state, "full_proc_hist", None), list):
@@ -69,36 +68,6 @@ class FlowEngine:
             default_system_prompts=SYSTEM_PROMPTS_BY_ROLE_DEFAULT,
             default_agent_role_descriptions=AGENT_ROLE_DESCRIPTIONS_DEFAULT,
         )
-
-    def _summarize_workflow(self, state: StorageEngine) -> None:
-        self._ensure_runtime_fields(state)
-        if not state.workflow_hist:
-            state.workflow_summary = "Session initialized and waiting for user input."
-            return
-
-        prompt = build_prompt(
-            "",
-            self.prompt_engine.get_step_prompt("workflow_summary"),
-            {
-                "workflow_summary": state.workflow_summary,
-                "workflow_history": state.workflow_hist,
-            },
-        )
-        try:
-            out = self.model_router.generate(
-                prompt=prompt,
-                task_type="thinking",
-            )
-            if isinstance(out, dict):
-                candidate = out.get("workflow_summary")
-                if isinstance(candidate, str) and candidate.strip():
-                    state.workflow_summary = candidate.strip()
-                    return
-        except Exception:
-            pass
-
-        if not state.workflow_summary.strip():
-            state.workflow_summary = "Workflow summary unavailable; using workflow history as source of truth."
 
     def validate_action_or_repair(
         self,
@@ -128,7 +97,12 @@ class FlowEngine:
 
         repaired = self.normalize_action(repair_out.get("action"))
         if repaired in self.allowed_steps(agent_role):
-            state.update_state(role="runtime", text=repair_out.get("raw_response", "repaired action"))
+            state.update_state(
+                role="runtime",
+                text=repair_out.get("raw_response", "repaired action"),
+                prompt_engine=self.prompt_engine,
+                model_router=self.model_router,
+            )
             return repaired
         return "report"
 
@@ -192,7 +166,12 @@ class FlowEngine:
                 requested_ids.append(doc_id)
         ltms = self.knowledge.load_knowledge(requested_ids)
         for doc in ltms:
-            state.update_state(role="retrieved_memory", text=str(doc.get("title", "doc")))
+            state.update_state(
+                role="retrieved_memory",
+                text=str(doc.get("title", "doc")),
+                prompt_engine=self.prompt_engine,
+                model_router=self.model_router,
+            )
         state.ltm_context.extend(ltms)
 
     def handle_plan(self, state: StorageEngine, structured: dict[str, Any], caps: dict[str, Any]) -> None:
@@ -268,8 +247,6 @@ class FlowEngine:
                 agent_role=agent_role,
                 objective=objective,
             )
-            self._summarize_workflow(state)
-
             llm_out = self.call_step_llm(
                 state=state,
                 current_step=current_step,
@@ -277,7 +254,12 @@ class FlowEngine:
                 agent_role=agent_role,
                 objective=objective,
             )
-            state.update_state(role=agent_role, text=llm_out.get("raw_response", ""))
+            state.update_state(
+                role=agent_role,
+                text=llm_out.get("raw_response", ""),
+                prompt_engine=self.prompt_engine,
+                model_router=self.model_router,
+            )
 
             structured = llm_out.get("action_input", {})
             if not isinstance(structured, dict):
@@ -315,7 +297,12 @@ class FlowEngine:
                 elif current_step == "report":
                     forced = self.handle_report(state, llm_out.get("raw_response", "")).get("force_next_step")
             except Exception as exc:
-                state.update_state(role="runtime", text=f"handler_error> : {current_step}: {exc}")
+                state.update_state(
+                    role="runtime",
+                    text=f"handler_error> : {current_step}: {exc}",
+                    prompt_engine=self.prompt_engine,
+                    model_router=self.model_router,
+                )
                 forced = "report"
 
             if actions_executed >= int(limits["max_exec_actions"]):
@@ -329,14 +316,18 @@ class FlowEngine:
                 state.terminated = True
                 if not state.final_report:
                     state.final_report = llm_out.get("raw_response", "Loop complete.")
-                state.update_state(role="runtime", text=f"loop_end> : {state.final_report}")
+                state.update_state(
+                    role="runtime",
+                    text=f"loop_end> : {state.final_report}",
+                    prompt_engine=self.prompt_engine,
+                    model_router=self.model_router,
+                )
                 break
 
             current_step = str(next_action)
 
         if not state.final_report:
             state.final_report = "Loop ended by runtime limits."
-        self._summarize_workflow(state)
         state.save_state()
 
     def run_core_session(
@@ -368,11 +359,14 @@ class FlowEngine:
                     print(command_out)
                 continue
 
-            state.update_state(role="user", text=stripped)
-            self._summarize_workflow(state)
+            state.update_state(
+                role="user",
+                text=stripped,
+                prompt_engine=self.prompt_engine,
+                model_router=self.model_router,
+            )
             state.save_state()
-
-            self.env_info = {
+            self.action_info = {
                 "action": "call_llm",
                 "action_input": {
                     "agent_role": "core_agent",
@@ -380,5 +374,4 @@ class FlowEngine:
                     "workflow_history": state.workflow_hist,
                 }
             }
-
             self._run_working_loop(state=state)

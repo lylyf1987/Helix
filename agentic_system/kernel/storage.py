@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .prompts import build_prompt
 
 class StorageEngine:
     def __init__(self, workspace: str | Path, session_id: str | None = None) -> None:
@@ -54,12 +55,42 @@ class StorageEngine:
         role: str | None = None,
         text: str | None = None,
         to_workflow_hist: bool = True,
+        prompt_engine: Any | None = None,
+        model_router: Any | None = None,
     ) -> None:
         if role is not None:
             line = self.format_line(role, text or "")
             self.full_proc_hist.append(line)
             if to_workflow_hist:
                 self.workflow_hist.append(line)
+
+        if not self.workflow_hist:
+            return
+        
+        if prompt_engine is None or model_router is None:
+            return
+
+        step_prompt = prompt_engine.get_step_prompt("workflow_summary")
+        if not isinstance(step_prompt, str) or not step_prompt.strip():
+            return
+
+        prompt = build_prompt(
+            "",
+            step_prompt,
+            {
+                "workflow_summary": self.workflow_summary,
+                "workflow_history": self.workflow_hist,
+            },
+        )
+        try:
+            out = model_router.generate(prompt=prompt, task_type="thinking")
+            if not isinstance(out, dict):
+                return
+            candidate = out.get("workflow_summary")
+            if isinstance(candidate, str) and candidate.strip():
+                self.workflow_summary = candidate.strip()
+        except Exception:
+            return
 
     @staticmethod
     def utc_now_iso() -> str:
