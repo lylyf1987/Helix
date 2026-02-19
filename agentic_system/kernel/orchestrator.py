@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
@@ -55,6 +56,7 @@ class FlowEngine:
                 "action": "exec",
                 "code_type": str(action_input.get("code_type", "bash")).strip().lower(),
                 "script_path": str(action_input.get("script_path", "")).strip(),
+                "script_args": action_input.get("script_args", []),
                 "script_preview": str(action_input.get("script", "")).strip()[:240],
             },
             ensure_ascii=True,
@@ -75,8 +77,7 @@ class FlowEngine:
         action_input = dict(action_input_raw) if isinstance(action_input_raw, dict) else {}
         return raw_response, action, action_input
 
-    @staticmethod
-    def _build_stream_printer(role: str) -> tuple[Callable[[str], None], Callable[[str], None]]:
+    def _build_stream_printer(self, role: str) -> tuple[Callable[[str], None], Callable[[str], None]]:
         role_name = str(role).strip() or "assistant"
         started = {"value": False}
 
@@ -116,13 +117,18 @@ class FlowEngine:
             state=state,
             model_router=model_router,
         )
+        show_full_stream = os.getenv("AGENTIC_SHOW_FULL_LLM_STREAM", "").strip().lower() in {"1", "true", "yes", "on"}
         on_chunk, finish_stream = self._build_stream_printer("core_agent")
+        on_raw_chunk, finish_raw_stream = self._build_stream_printer("core_agent(raw)")
 
         response = model_router.generate(
             role="core_agent",
             final_prompt=final_prompt,
             raw_response_callback=on_chunk,
+            stream_text_callback=on_raw_chunk if show_full_stream else None,
         )
+        if show_full_stream:
+            finish_raw_stream("")
         raw_response, action, action_input = self._normalize_llm_response(response)
         finish_stream(raw_response)
         state.update_state(
@@ -133,7 +139,7 @@ class FlowEngine:
         )
         state.save_state()
 
-        while action not in TERMINAL_TOKENS and turns < max_turns:
+        while turns < max_turns:
             turns += 1
             if action == "chat_with_requester":
                 break
@@ -167,10 +173,17 @@ class FlowEngine:
                     code_type = str(action_input.get("code_type", "bash")).strip().lower()
                     script_path = str(action_input.get("script_path", "")).strip()
                     script = str(action_input.get("script", "")).strip()
+                    raw_script_args = action_input.get("script_args", [])
+                    script_args = (
+                        [str(arg) for arg in raw_script_args if str(arg).strip()]
+                        if isinstance(raw_script_args, list)
+                        else []
+                    )
                     try:
                         exec_result = execute(
                             code_type=code_type,
                             script_path=script_path,
+                            script_args=script_args,
                             script=script,
                             workspace=self.workspace,
                         )
@@ -206,12 +219,16 @@ class FlowEngine:
                 model_router=model_router,
             )
             on_chunk, finish_stream = self._build_stream_printer("core_agent")
+            on_raw_chunk, finish_raw_stream = self._build_stream_printer("core_agent(raw)")
 
             response = model_router.generate(
                 role="core_agent",
                 final_prompt=final_prompt,
                 raw_response_callback=on_chunk,
+                stream_text_callback=on_raw_chunk if show_full_stream else None,
             )
+            if show_full_stream:
+                finish_raw_stream("")
             raw_response, action, action_input = self._normalize_llm_response(response)
             finish_stream(raw_response)
             state.update_state(

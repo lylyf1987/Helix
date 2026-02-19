@@ -9,6 +9,7 @@ def execute(
     *,
     code_type: str,
     script_path: str | None = None,
+    script_args: list[str] | None = None,
     script: str | None = None,
     workspace: str | Path,
     timeout_seconds: int = 60,
@@ -19,16 +20,19 @@ def execute(
     normalized_code_type = str(code_type).strip().lower()
     path_value = str(script_path or "").strip()
     script_value = str(script or "").strip()
+    args_value = [str(arg) for arg in (script_args or []) if str(arg).strip()]
 
     has_path = bool(path_value)
     has_script = bool(script_value)
     if has_path == has_script:
         raise ValueError("Exactly one of script_path or script must be provided")
+    if has_script and args_value:
+        raise ValueError("script_args is only supported when script_path is provided")
 
     if normalized_code_type == "python":
         if has_path:
             result = subprocess.run(
-                [sys.executable, path_value],
+                [sys.executable, path_value, *args_value],
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,
@@ -45,7 +49,7 @@ def execute(
     elif normalized_code_type == "bash":
         if has_path:
             result = subprocess.run(
-                ["bash", path_value],
+                ["bash", path_value, *args_value],
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,

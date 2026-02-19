@@ -60,10 +60,23 @@ class StorageEngine:
                 state=self,
                 model_router=model_router,
             )
+            started = {"value": False}
+
+            def on_summary_chunk(token: str) -> None:
+                if not token:
+                    return
+                if not started["value"]:
+                    print("workflow_summarizer(raw)> ", end="", flush=True)
+                    started["value"] = True
+                print(token, end="", flush=True)
+
             out = model_router.generate(
                 role="workflow_summarizer",
                 final_prompt=final_prompt,
+                stream_text_callback=on_summary_chunk,
             )
+            if started["value"]:
+                print()
             if not isinstance(out, dict):
                 return
             candidate = out.get("workflow_summary")
