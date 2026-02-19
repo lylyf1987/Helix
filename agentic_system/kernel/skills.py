@@ -8,6 +8,14 @@ from uuid import uuid4
 
 
 class SkillEngine:
+    _SCOPE_MAP = {
+        "all-agents": "all",
+        "all": "all",
+        "core-agent": "core",
+        "core": "core",
+        "core+all": "core+all",
+    }
+
     def __init__(self, workspace: str | Path, packaged_root: str | Path | None = None) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.runtime_skills_root = self.workspace / "skills"
@@ -15,10 +23,15 @@ class SkillEngine:
         self.packaged_root = Path(packaged_root).resolve() if packaged_root else default_packaged
         self._bootstrap_runtime_skills()
 
-    def load_skill_meta(self, scope: str) -> list[dict[str, Any]]:
+    def load_skill_meta(self, scope: str) -> str:
+        scope_raw = str(scope).strip().lower()
+        normalized_scope = self._SCOPE_MAP.get(scope_raw, "")
+        if not normalized_scope:
+            return "- (no skills found)"
+
         rows: list[dict[str, Any]] = []
-        include_core = scope in {"core+all", "core"}
-        include_all = scope in {"core+all", "all"}
+        include_core = normalized_scope in {"core+all", "core"}
+        include_all = normalized_scope in {"core+all", "all"}
 
         roots: list[tuple[Path, str]] = []
         if include_core:
@@ -40,57 +53,100 @@ class SkillEngine:
                 except OSError:
                     text = ""
                 frontmatter = self._parse_frontmatter(text)
+                name = str(frontmatter.get("name", skill_id)).strip() or skill_id
+                handler = str(frontmatter.get("handler", "")).strip()
+                description = str(frontmatter.get("description", "")).strip()
+                path = f"skills/{skill_scope}/{skill_id}"
+                handler_path = f"{path}/{handler}" if handler else ""
                 rows.append(
                     {
                         "skill_id": skill_id,
                         "scope": skill_scope,
-                        "name": str(frontmatter.get("name", skill_id)),
-                        "handler": str(frontmatter.get("handler", "")),
-                        "description": str(frontmatter.get("description", "")),
+                        "path": path,
+                        "handler": handler_path,
+                        "name": name,
+                        "description": description,
                         "required_tools": self._parse_csv_field(frontmatter.get("required_tools", "")),
                         "recommended_tools": self._parse_csv_field(frontmatter.get("recommended_tools", "")),
                         "forbidden_tools": self._parse_csv_field(frontmatter.get("forbidden_tools", "")),
                     }
                 )
 
-        rows = [row for row in rows if str(row.get("skill_id", "")).strip()]
+        rows = [
+            row
+            for row in rows
+            if str(row.get("skill_id", "")).strip() and str(row.get("scope", "")).strip()
+        ]
         rows.sort(key=lambda item: (str(item.get("scope", "")), str(item.get("skill_id", ""))))
-        return rows
+        if not rows:
+            return "- (no skills found)"
+        return "\n".join("- " + json.dumps(row, ensure_ascii=True) for row in rows)
 
-    def load_skill(
-        self,
-        skill_ids: str | list[str],
-        scope: str,
-    ) -> list[dict[str, Any]]:
-        if isinstance(skill_ids, str):
-            requested = [skill_ids.strip()] if skill_ids.strip() else []
-        else:
-            requested = [str(item).strip() for item in skill_ids if str(item).strip()]
-        if not requested:
-            return []
+    def load_skill(self, *, action_input: dict[str, object]) -> str:
+        if not isinstance(action_input, dict):
+            return "understand_skill error: action_input must be object"
 
-        include_core = scope in {"core+all", "core"}
-        include_all = scope in {"core+all", "all"}
+        requested_id = str(action_input.get("skill_id", "")).strip()
+        scope_raw = str(action_input.get("scope", "")).strip().lower()
+        normalized_scope = self._SCOPE_MAP.get(scope_raw, "")
+        if not requested_id:
+            return "understand_skill error: missing skill_id"
+        if not normalized_scope:
+            return "understand_skill error: invalid scope (all-agents|core-agent)"
 
-        roots: list[Path] = []
+        include_core = normalized_scope in {"core+all", "core"}
+        include_all = normalized_scope in {"core+all", "all"}
+
+        roots: list[tuple[Path, str]] = []
         if include_core:
-            roots.append(self.runtime_skills_root / "core-agent")
+            roots.append((self.runtime_skills_root / "core-agent", "core-agent"))
         if include_all:
-            roots.append(self.runtime_skills_root / "all-agents")
+            roots.append((self.runtime_skills_root / "all-agents", "all-agents"))
 
         details: list[dict[str, Any]] = []
 
-        for root in roots:
+        for root, skill_scope in roots:
             if not root.exists():
                 continue
-            for skill_id in requested:
-                skill_dir = root / skill_id
-                if not skill_dir.exists() or not skill_dir.is_dir():
-                    continue
-                row = self._build_skill_payload(skill_dir, skill_id)
-                details.append(row)
+            skill_dir = root / requested_id
+            if not skill_dir.exists() or not skill_dir.is_dir():
+                continue
+            row = self._build_skill_payload(skill_dir, requested_id, skill_scope)
+            details.append(row)
 
-        return details
+        if not details:
+            return f"skill not found: skill_id={requested_id}, scope={scope_raw}"
+
+        blocks: list[str] = []
+        for idx, row in enumerate(details, start=1):
+            loaded_skill_id = str(row.get("skill_id", requested_id)).strip() or requested_id
+            loaded_scope = str(row.get("scope", scope_raw)).strip() or scope_raw
+            skill_md = str(row.get("skill_md", "")).strip()
+            scripts = row.get("scripts", [])
+            script_paths: list[str] = []
+            if isinstance(scripts, list):
+                for item in scripts:
+                    if not isinstance(item, dict):
+                        continue
+                    path = str(item.get("path", "")).strip()
+                    if path:
+                        script_paths.append(path)
+            scripts_text = "\n".join(f"- {path}" for path in script_paths) if script_paths else "- (none)"
+            blocks.append(
+                "\n".join(
+                    [
+                        f"Skill #{idx}",
+                        f"skill_id: {loaded_skill_id}",
+                        f"scope: {loaded_scope}",
+                        "skill_md:",
+                        skill_md if skill_md else "(empty)",
+                        "scripts:",
+                        scripts_text,
+                    ]
+                )
+            )
+
+        return "\n\n---\n\n".join(blocks)
 
     def create_skill(self, proposal: dict[str, Any]) -> dict[str, Any]:
         payload = dict(proposal) if isinstance(proposal, dict) else {}
@@ -196,7 +252,7 @@ class SkillEngine:
         return [item.strip() for item in raw.split(",") if item.strip()]
     
     @staticmethod
-    def _build_skill_payload(skill_dir: Path, skill_id: str) -> dict[str, Any]:
+    def _build_skill_payload(skill_dir: Path, skill_id: str, scope: str) -> dict[str, Any]:
         skill_md_path = skill_dir / "SKILL.md"
         skill_md = ""
         if skill_md_path.exists():
@@ -207,6 +263,7 @@ class SkillEngine:
 
         payload: dict[str, Any] = {
             "skill_id": skill_id,
+            "scope": scope,
             "skill_md": skill_md,
             "scripts": [],
         }

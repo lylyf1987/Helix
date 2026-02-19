@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -7,15 +8,33 @@ from pathlib import Path
 
 def execute(
     *,
-    code_type: str,
-    script_path: str | None = None,
-    script_args: list[str] | None = None,
-    script: str | None = None,
+    action_input: dict[str, object],
     workspace: str | Path,
     timeout_seconds: int = 60,
 ) -> dict[str, str]:
     cwd = Path(workspace).expanduser().resolve()
     cwd.mkdir(parents=True, exist_ok=True)
+
+    if not isinstance(action_input, dict):
+        raise ValueError("exec action requires object action_input")
+
+    code_type = str(action_input.get("code_type", "bash")).strip().lower()
+    script_path = str(action_input.get("script_path", "")).strip()
+    script = str(action_input.get("script", "")).strip()
+    raw_script_args = action_input.get("script_args", [])
+    if isinstance(raw_script_args, (list, tuple)):
+        script_args = [str(arg) for arg in raw_script_args if str(arg).strip()]
+    elif isinstance(raw_script_args, str):
+        raw_args_text = raw_script_args.strip()
+        if raw_args_text:
+            try:
+                script_args = [arg for arg in shlex.split(raw_args_text) if arg.strip()]
+            except ValueError:
+                script_args = [raw_args_text]
+        else:
+            script_args = []
+    else:
+        script_args = []
 
     normalized_code_type = str(code_type).strip().lower()
     path_value = str(script_path or "").strip()

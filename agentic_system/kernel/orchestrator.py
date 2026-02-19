@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shlex
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
@@ -123,6 +122,7 @@ class FlowEngine:
             role="core_agent",
             state=state,
             model_router=model_router,
+            skill_engine=self.skill_engine,
         )
         on_chunk, finish_stream = self._build_stream_printer("core_agent")
 
@@ -179,29 +179,9 @@ class FlowEngine:
                         print(f"runtime> exec denied by requester")
                         state.save_state()
                         break
-                    code_type = str(action_input.get("code_type", "bash")).strip().lower()
-                    script_path = str(action_input.get("script_path", "")).strip()
-                    script = str(action_input.get("script", "")).strip()
-                    raw_script_args = action_input.get("script_args", [])
-                    if isinstance(raw_script_args, (list, tuple)):
-                        script_args = [str(arg) for arg in raw_script_args if str(arg).strip()]
-                    elif isinstance(raw_script_args, str):
-                        raw_args_text = raw_script_args.strip()
-                        if raw_args_text:
-                            try:
-                                script_args = [arg for arg in shlex.split(raw_args_text) if arg.strip()]
-                            except ValueError:
-                                script_args = [raw_args_text]
-                        else:
-                            script_args = []
-                    else:
-                        script_args = []
                     try:
                         exec_result = execute(
-                            code_type=code_type,
-                            script_path=script_path,
-                            script_args=script_args,
-                            script=script,
+                            action_input=action_input,
                             workspace=self.workspace,
                         )
                         state.update_state(
@@ -226,6 +206,29 @@ class FlowEngine:
                         state.save_state()
             elif action == "keep_reasoning":
                 pass
+            elif action == "understand_skill":
+                try:
+                    full_skill_context = self.skill_engine.load_skill(action_input=action_input)
+                    role = "runtime" if str(full_skill_context).startswith("understand_skill error:") else "skill_engine"
+                    state.update_state(
+                        role=role,
+                        text=full_skill_context,
+                        prompt_engine=prompt_engine,
+                        model_router=model_router,
+                    )
+                    print()
+                    print(f"{role}> {full_skill_context}")
+                    state.save_state()
+                except Exception as exc:
+                    state.update_state(
+                        role="runtime",
+                        text=f"understand_skill error: {exc}",
+                        prompt_engine=prompt_engine,
+                        model_router=model_router,
+                    )
+                    print()
+                    print(f"runtime> understand_skill error: {exc}")
+                    state.save_state()
             else:
                 state.update_state(
                     role="runtime",
@@ -242,6 +245,7 @@ class FlowEngine:
                 role="core_agent",
                 state=state,
                 model_router=model_router,
+                skill_engine=self.skill_engine,
             )
             on_chunk, finish_stream = self._build_stream_printer("core_agent")
 

@@ -139,74 +139,7 @@ class PromptEngine:
             return self._load_json_map(self.legacy_system_prompts_path)
         return self._load_json_map(self.system_prompts_path)
 
-    def _build_skills_meta_section(self) -> str:
-        skills_root = self.workspace / "skills"
-        lines: list[str] = [f"Skills Metadata (Loaded from {skills_root}):"]
-        rows: list[str] = []
-        for scope in ("core-agent", "all-agents"):
-            scope_root = skills_root / scope
-            if not scope_root.exists():
-                continue
-            for skill_dir in sorted(path for path in scope_root.iterdir() if path.is_dir()):
-                skill_md_path = skill_dir / "SKILL.md"
-                if not skill_md_path.exists():
-                    continue
-                name = skill_dir.name
-                description = ""
-                handler = ""
-                try:
-                    raw = skill_md_path.read_text(encoding="utf-8")
-                    frontmatter = self._parse_frontmatter(raw)
-                    if isinstance(frontmatter.get("name"), str) and frontmatter["name"].strip():
-                        name = frontmatter["name"].strip()
-                    if isinstance(frontmatter.get("description"), str):
-                        description = frontmatter["description"].strip()
-                    if isinstance(frontmatter.get("handler"), str):
-                        handler = frontmatter["handler"].strip()
-                except Exception:
-                    pass
-                summary = description if description else "No description."
-                skill_root_rel = f"skills/{scope}/{skill_dir.name}"
-                skill_md_rel = f"{skill_root_rel}/SKILL.md"
-                handler_rel = f"{skill_root_rel}/{handler}" if handler else ""
-                row = {
-                    "skill_id": skill_dir.name,
-                    "scope": scope,
-                    "path": skill_root_rel,
-                    "skill_md": skill_md_rel,
-                    "handler": handler_rel,
-                    "name": name,
-                    "description": summary,
-                }
-                rows.append("- " + json.dumps(row, ensure_ascii=True))
-        if rows:
-            lines.extend(rows)
-        else:
-            lines.append("- (no skills found)")
-        return "\n".join(lines)
-
-    @staticmethod
-    def _parse_frontmatter(text: str) -> dict[str, str]:
-        lines = text.splitlines()
-        if not lines or lines[0].strip() != "---":
-            return {}
-        end = -1
-        for idx in range(1, len(lines)):
-            if lines[idx].strip() == "---":
-                end = idx
-                break
-        if end == -1:
-            return {}
-        payload: dict[str, str] = {}
-        for raw in lines[1:end]:
-            line = raw.strip()
-            if not line or ":" not in line:
-                continue
-            key, value = line.split(":", 1)
-            payload[key.strip()] = value.strip()
-        return payload
-
-    def _get_system_prompt(self, role: str) -> str:
+    def _get_system_prompt(self, role: str, skill_engine: Any | None = None) -> str:
         role = str(role).strip()
         if role == "workflow_summarizer":
             return self.WORKFLOW_SUMMARIZER_PROMPT
@@ -228,7 +161,19 @@ class PromptEngine:
         else:
             lines.append("- (no role descriptions found)")
         roles_section = "\n".join(lines)
-        skills_section = self._build_skills_meta_section()
+
+        skill_scope = "core+all" if role == "core_agent" else "all"
+        skills_lines = [f"Skills Metadata (Loaded via SkillEngine.load_skill_meta, scope={skill_scope}):"]
+        skills_text = ""
+        try:
+            skills_text = str(skill_engine.load_skill_meta(scope=skill_scope)).strip()
+        except Exception:
+            skills_text = ""
+        if skills_text:
+            skills_lines.append(skills_text)
+        else:
+            skills_lines.append("- (no skills found)")
+        skills_section = "\n".join(skills_lines)
 
         text = selected.strip()
         if self._AGENT_ROLES_PLACEHOLDER in text:
@@ -278,8 +223,9 @@ class PromptEngine:
         role: str,
         state: Any | None = None,
         model_router: Any | None = None,
+        skill_engine: Any | None = None,
     ) -> str:
-        system_prompt = self._get_system_prompt(role)
+        system_prompt = self._get_system_prompt(role, skill_engine=skill_engine)
         workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
         workflow_history: list[str] = getattr(state, "workflow_hist", [])
         workflow_history_lines = [line for line in workflow_history if line.strip()]
