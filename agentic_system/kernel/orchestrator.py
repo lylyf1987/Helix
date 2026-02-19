@@ -6,11 +6,14 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
 
-from .constants import DEFAULT_LIMITS, TERMINAL_TOKENS
 from .executors import execute
 from .model_router import ModelRouter
 from .prompts import PromptEngine
 from .storage import StorageEngine
+
+DEFAULT_LIMITS = {
+    "max_inner_turns": 60,
+}
 
 
 class FlowEngine:
