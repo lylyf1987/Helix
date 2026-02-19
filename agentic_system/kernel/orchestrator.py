@@ -239,6 +239,7 @@ class FlowEngine:
                 print()
                 print(f"runtime> unsupported action: {action}")
                 state.save_state()
+                break
 
             self._ensure_runtime_fields(state)
             final_prompt = prompt_engine.build_prompt(
