@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
@@ -47,6 +48,8 @@ class FlowEngine:
             state.workflow_hist = []
         if not isinstance(getattr(state, "workflow_summary", None), str):
             state.workflow_summary = ""
+        if not isinstance(getattr(state, "action_hist", None), list):
+            state.action_hist = []
 
     def _confirm_exec(self, action_input: dict[str, Any]) -> bool:
         if str(self.mode).strip().lower() == "auto":
@@ -87,6 +90,7 @@ class FlowEngine:
             if not token:
                 return
             if not started["value"]:
+                print()
                 print(f"{role_name}> ", end="", flush=True)
                 started["value"] = True
             print(token, end="", flush=True)
@@ -97,6 +101,7 @@ class FlowEngine:
                 return
             text = str(raw_response or "").strip()
             if text:
+                print()
                 print(f"{role_name}> {text}")
 
         return on_token, finish
@@ -127,6 +132,7 @@ class FlowEngine:
             raw_response_callback=on_chunk,
         )
         raw_response, action, action_input = self._normalize_llm_response(response)
+        state.append_action(role="core_agent", action=action, action_input=action_input)
         finish_stream(raw_response)
         state.update_state(
             role="core_agent",
@@ -147,6 +153,7 @@ class FlowEngine:
                     prompt_engine=prompt_engine,
                     model_router=model_router,
                 )
+                print()
                 print(f"runtime> chat_with_sub_agent is disabled in current runtime")
                 state.save_state()
             elif action == "exec":
@@ -157,6 +164,7 @@ class FlowEngine:
                         prompt_engine=prompt_engine,
                         model_router=model_router,
                     )
+                    print()
                     print(f"runtime> exec action requires object action_input")
                     state.save_state()
                 else:
@@ -167,18 +175,27 @@ class FlowEngine:
                             prompt_engine=prompt_engine,
                             model_router=model_router,
                         )
+                        print()
                         print(f"runtime> exec denied by requester")
                         state.save_state()
-                        continue
+                        break
                     code_type = str(action_input.get("code_type", "bash")).strip().lower()
                     script_path = str(action_input.get("script_path", "")).strip()
                     script = str(action_input.get("script", "")).strip()
                     raw_script_args = action_input.get("script_args", [])
-                    script_args = (
-                        [str(arg) for arg in raw_script_args if str(arg).strip()]
-                        if isinstance(raw_script_args, list)
-                        else []
-                    )
+                    if isinstance(raw_script_args, (list, tuple)):
+                        script_args = [str(arg) for arg in raw_script_args if str(arg).strip()]
+                    elif isinstance(raw_script_args, str):
+                        raw_args_text = raw_script_args.strip()
+                        if raw_args_text:
+                            try:
+                                script_args = [arg for arg in shlex.split(raw_args_text) if arg.strip()]
+                            except ValueError:
+                                script_args = [raw_args_text]
+                        else:
+                            script_args = []
+                    else:
+                        script_args = []
                     try:
                         exec_result = execute(
                             code_type=code_type,
@@ -193,6 +210,7 @@ class FlowEngine:
                             prompt_engine=prompt_engine,
                             model_router=model_router,
                         )
+                        print()
                         print(f"runtime> {json.dumps(exec_result, ensure_ascii=True)}")
                         state.save_state()
 
@@ -203,6 +221,7 @@ class FlowEngine:
                             prompt_engine=prompt_engine,
                             model_router=model_router,
                         )
+                        print()
                         print(f"runtime> exec error: {exc}")
                         state.save_state()
             else:
@@ -212,6 +231,7 @@ class FlowEngine:
                     prompt_engine=prompt_engine,
                     model_router=model_router,
                 )
+                print()
                 print(f"runtime> unsupported action: {action}")
                 state.save_state()
 
@@ -229,6 +249,7 @@ class FlowEngine:
                 raw_response_callback=on_chunk,
             )
             raw_response, action, action_input = self._normalize_llm_response(response)
+            state.append_action(role="core_agent", action=action, action_input=action_input)
             finish_stream(raw_response)
             state.update_state(
                 role="core_agent",
@@ -245,6 +266,7 @@ class FlowEngine:
                 prompt_engine=prompt_engine,
                 model_router=model_router,
             )
+            print()
             print(f"runtime> max turns reached ({max_turns}); ending current loop")
             state.save_state()
 

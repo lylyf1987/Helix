@@ -67,6 +67,7 @@ class AgentRuntime:
                 "  /status workflow_summary   Show workflow_summary.",
                 "  /status workflow_hist      Show workflow_hist lines.",
                 "  /status full_proc_hist     Show full_proc_hist lines.",
+                "  /status action_hist        Show LLM selected action history.",
                 "  /refresh         Start a new session in current workspace.",
                 "  /exit            Quit.",
             ]
@@ -80,6 +81,7 @@ class AgentRuntime:
                 f"mode={self.mode}",
                 f"full_proc_hist_lines={len(self.state.full_proc_hist)}",
                 f"workflow_hist_lines={len(self.state.workflow_hist)}",
+                f"action_hist_lines={len(getattr(self.state, 'action_hist', []))}",
             ]
         )
 
@@ -96,6 +98,12 @@ class AgentRuntime:
 
     def _status_full_proc_hist_text(self) -> str:
         rows = getattr(self.state, "full_proc_hist", [])
+        if not isinstance(rows, list) or not rows:
+            return "(empty)"
+        return "\n".join(str(line) for line in rows)
+
+    def _status_action_hist_text(self) -> str:
+        rows = getattr(self.state, "action_hist", [])
         if not isinstance(rows, list) or not rows:
             return "(empty)"
         return "\n".join(str(line) for line in rows)
@@ -120,7 +128,9 @@ class AgentRuntime:
                 return self._status_workflow_hist_text()
             if target == "full_proc_hist":
                 return self._status_full_proc_hist_text()
-            return "Unknown /status target. Use: workflow_summary | workflow_hist | full_proc_hist"
+            if target == "action_hist":
+                return self._status_action_hist_text()
+            return "Unknown /status target. Use: workflow_summary | workflow_hist | full_proc_hist | action_hist"
         return f"Unknown command: {cmd}. Use /help."
 
     def start(

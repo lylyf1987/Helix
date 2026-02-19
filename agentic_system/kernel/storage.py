@@ -27,6 +27,7 @@ class StorageEngine:
         self.full_proc_hist: list[str] = []
         self.workflow_hist: list[str] = []
         self.workflow_summary: str = ""
+        self.action_hist: list[str] = []
 
     def load_state(self) -> bool:
         if not self.state_path.exists():
@@ -83,12 +84,24 @@ class StorageEngine:
     def _format_line(cls, role: str, text: str) -> str:
         return f"[{cls.utc_now_iso()}] {role}> : {text}"
 
+    @classmethod
+    def _format_action_line(cls, role: str, action: str, action_input: dict[str, Any]) -> str:
+        payload = json.dumps(action_input, ensure_ascii=True)
+        return f"[{cls.utc_now_iso()}] {role}> action={action} action_input={payload}"
+
+    def append_action(self, role: str, action: str, action_input: Any) -> None:
+        role_name = str(role or "").strip() or "agent"
+        action_name = str(action or "").strip().lower() or "unknown"
+        payload = dict(action_input) if isinstance(action_input, dict) else {}
+        self.action_hist.append(self._format_action_line(role_name, action_name, payload))
+
     def _serialize_state(self) -> dict[str, Any]:
         return {
             "session_id": self.session_id,
             "full_proc_hist": self.full_proc_hist,
             "workflow_hist": self.workflow_hist,
             "workflow_summary": self.workflow_summary,
+            "action_hist": self.action_hist,
         }
 
     def _deserialize_state(self, raw: dict[str, Any]) -> None:
@@ -101,6 +114,8 @@ class StorageEngine:
         full_proc_hist = raw.get("full_proc_hist", [])
         workflow_hist = raw.get("workflow_hist", raw.get("llm_hist", []))
         workflow_summary = raw.get("workflow_summary", raw.get("runtime_summary", ""))
+        action_hist = raw.get("action_hist", [])
         self.full_proc_hist = list(full_proc_hist if isinstance(full_proc_hist, list) else [])
         self.workflow_hist = list(workflow_hist if isinstance(workflow_hist, list) else [])
         self.workflow_summary = str(workflow_summary if isinstance(workflow_summary, str) else "")
+        self.action_hist = list(action_hist if isinstance(action_hist, list) else [])
