@@ -224,6 +224,8 @@ class FlowEngine:
                         print()
                         print(f"runtime> exec error: {exc}")
                         state.save_state()
+            elif action == "keep_reasoning":
+                pass
             else:
                 state.update_state(
                     role="runtime",
