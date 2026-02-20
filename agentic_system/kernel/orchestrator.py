@@ -22,7 +22,6 @@ class FlowEngine:
         mode: str,
         model_router: ModelRouter | None = None,
         prompt_engine: PromptEngine | None = None,
-        skill_engine: Any | None = None,
         policy_engine: Any | None = None,
         approval_handler: Callable[[str], tuple[bool, str]] | None = None,
         limits: dict[str, int] | None = None,
@@ -31,7 +30,6 @@ class FlowEngine:
         self.mode = mode
         self.model_router = model_router
         self.prompt_engine = prompt_engine
-        self.skill_engine = skill_engine
         self.policy_engine = policy_engine
         self.approval_handler = approval_handler
         self.last_core_agent_prompt: str = ""
@@ -121,7 +119,6 @@ class FlowEngine:
             role="core_agent",
             state=state,
             model_router=model_router,
-            skill_engine=self.skill_engine,
         )
         self.last_core_agent_prompt = final_prompt
         on_chunk, finish_stream = self._build_stream_printer("core_agent")
@@ -206,29 +203,6 @@ class FlowEngine:
                         state.save_state()
             elif action == "keep_reasoning":
                 pass
-            elif action == "understand_skill":
-                try:
-                    full_skill_context = self.skill_engine.load_skill(action_input=action_input)
-                    role = "runtime" if str(full_skill_context).startswith("understand_skill error:") else "skill_engine"
-                    state.update_state(
-                        role=role,
-                        text=full_skill_context,
-                        prompt_engine=prompt_engine,
-                        model_router=model_router,
-                    )
-                    print()
-                    print(f"{role}> {full_skill_context}")
-                    state.save_state()
-                except Exception as exc:
-                    state.update_state(
-                        role="runtime",
-                        text=f"understand_skill error: {exc}",
-                        prompt_engine=prompt_engine,
-                        model_router=model_router,
-                    )
-                    print()
-                    print(f"runtime> understand_skill error: {exc}")
-                    state.save_state()
             else:
                 state.update_state(
                     role="runtime",
@@ -237,7 +211,7 @@ class FlowEngine:
                     model_router=model_router,
                 )
                 print()
-                print(f"runtime> unsupported action: {action}")
+                print(f"runtime> get unsupported action from core_agent: {action}")
                 state.save_state()
                 break
 
@@ -246,7 +220,6 @@ class FlowEngine:
                 role="core_agent",
                 state=state,
                 model_router=model_router,
-                skill_engine=self.skill_engine,
             )
             self.last_core_agent_prompt = final_prompt
             on_chunk, finish_stream = self._build_stream_printer("core_agent")

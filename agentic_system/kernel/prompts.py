@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import shutil
 from pathlib import Path
 from typing import Any
 
@@ -72,23 +71,17 @@ class PromptEngine:
     def __init__(
         self,
         workspace: str | Path,
-        packaged_root: str | Path | None = None,
         token_window_limit: int = int(256000*0.75),
         compact_keep_last_k: int = 10,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.runtime_prompts_root = self.workspace / "prompts"
-        self.packaged_root = (
-            Path(packaged_root).resolve()
-            if packaged_root
-            else Path(__file__).resolve().parents[1] / "prompts"
-        )
+        self.runtime_skills_root = self.workspace / "skills"
         self.token_window_limit = int(token_window_limit)
         self.compact_keep_last_k = max(1, int(compact_keep_last_k))
         self.system_prompts_path = self.runtime_prompts_root / "agent_system_prompt.json"
         self.legacy_system_prompts_path = self.runtime_prompts_root / "agent_systemp_prompt.json"
         self.agent_role_descriptions_path = self.runtime_prompts_root / "agent_role_description.json"
-        self._bootstrap_runtime_prompts()
 
     @staticmethod
     def _normalize_map(raw: Any) -> dict[str, str]:
@@ -115,32 +108,97 @@ class PromptEngine:
             return {}
         return cls._normalize_map(raw)
 
-    def _bootstrap_runtime_prompts(self) -> None:
-        self.runtime_prompts_root.mkdir(parents=True, exist_ok=True)
-
-        if not self.system_prompts_path.exists():
-            source = self.packaged_root / "agent_system_prompt.json"
-            legacy_source = self.packaged_root / "agent_systemp_prompt.json"
-            if source.exists():
-                shutil.copy2(source, self.system_prompts_path)
-            elif legacy_source.exists():
-                shutil.copy2(legacy_source, self.system_prompts_path)
-            else:
-                self.system_prompts_path.write_text("{}", encoding="utf-8")
-
-        if not self.agent_role_descriptions_path.exists():
-            source = self.packaged_root / "agent_role_description.json"
-            if source.exists():
-                shutil.copy2(source, self.agent_role_descriptions_path)
-            else:
-                self.agent_role_descriptions_path.write_text("{}", encoding="utf-8")
-
     def _load_system_prompts(self) -> dict[str, str]:
         if not self.system_prompts_path.exists() and self.legacy_system_prompts_path.exists():
             return self._load_json_map(self.legacy_system_prompts_path)
         return self._load_json_map(self.system_prompts_path)
 
-    def _get_system_prompt(self, role: str, skill_engine: Any | None = None) -> str:
+    @staticmethod
+    def _parse_frontmatter(text: str) -> dict[str, str]:
+        lines = text.splitlines()
+        if not lines or lines[0].strip() != "---":
+            return {}
+        end = -1
+        for idx in range(1, len(lines)):
+            if lines[idx].strip() == "---":
+                end = idx
+                break
+        if end == -1:
+            return {}
+        payload: dict[str, str] = {}
+        for raw in lines[1:end]:
+            line = raw.strip()
+            if not line or ":" not in line:
+                continue
+            key, value = line.split(":", 1)
+            payload[key.strip()] = value.strip()
+        return payload
+
+    @staticmethod
+    def _parse_csv_field(value: Any) -> list[str]:
+        if value is None:
+            return []
+        raw = str(value).strip()
+        if not raw:
+            return []
+        return [item.strip() for item in raw.split(",") if item.strip()]
+
+    def _load_skill_meta_text(self, role: str) -> str:
+        role_name = str(role).strip()
+        include_core = role_name == "core_agent"
+        include_all = True
+
+        roots: list[tuple[Path, str]] = []
+        if include_core:
+            roots.append((self.runtime_skills_root / "core-agent", "core-agent"))
+        if include_all:
+            roots.append((self.runtime_skills_root / "all-agents", "all-agents"))
+
+        rows: list[dict[str, Any]] = []
+        for root, scope in roots:
+            if not root.exists():
+                continue
+            for skill_dir in sorted(path for path in root.iterdir() if path.is_dir()):
+                skill_id = skill_dir.name
+                skill_md_path = skill_dir / "SKILL.md"
+                if not skill_md_path.exists():
+                    continue
+                text = ""
+                try:
+                    text = skill_md_path.read_text(encoding="utf-8")
+                except OSError:
+                    text = ""
+                frontmatter = self._parse_frontmatter(text)
+                name = str(frontmatter.get("name", skill_id)).strip() or skill_id
+                handler = str(frontmatter.get("handler", "")).strip()
+                description = str(frontmatter.get("description", "")).strip()
+                path = f"skills/{scope}/{skill_id}"
+                handler_path = f"{path}/{handler}" if handler else ""
+                rows.append(
+                    {
+                        "skill_id": skill_id,
+                        "scope": scope,
+                        "path": path,
+                        "handler": handler_path,
+                        "name": name,
+                        "description": description,
+                        "required_tools": self._parse_csv_field(frontmatter.get("required_tools", "")),
+                        "recommended_tools": self._parse_csv_field(frontmatter.get("recommended_tools", "")),
+                        "forbidden_tools": self._parse_csv_field(frontmatter.get("forbidden_tools", "")),
+                    }
+                )
+
+        rows = [
+            row
+            for row in rows
+            if str(row.get("skill_id", "")).strip() and str(row.get("scope", "")).strip()
+        ]
+        rows.sort(key=lambda item: (str(item.get("scope", "")), str(item.get("skill_id", ""))))
+        if not rows:
+            return "- (no skills found)"
+        return "\n".join("- " + json.dumps(row, ensure_ascii=True) for row in rows)
+
+    def _get_system_prompt(self, role: str) -> str:
         role = str(role).strip()
         if role == "workflow_summarizer":
             return self.WORKFLOW_SUMMARIZER_PROMPT
@@ -163,13 +221,8 @@ class PromptEngine:
             lines.append("- (no role descriptions found)")
         roles_section = "\n".join(lines)
 
-        skill_scope = "core+all" if role == "core_agent" else "all"
         skills_lines = [f"Below is the available skill metadata:"]
-        skills_text = ""
-        try:
-            skills_text = str(skill_engine.load_skill_meta(scope=skill_scope)).strip()
-        except Exception:
-            skills_text = ""
+        skills_text = self._load_skill_meta_text(role)
         if skills_text:
             skills_lines.append(skills_text)
         else:
@@ -223,9 +276,8 @@ class PromptEngine:
         role: str,
         state: Any | None = None,
         model_router: Any | None = None,
-        skill_engine: Any | None = None,
     ) -> str:
-        system_prompt = self._get_system_prompt(role, skill_engine=skill_engine)
+        system_prompt = self._get_system_prompt(role)
         workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
         workflow_history: list[str] = getattr(state, "workflow_hist", [])
         workflow_history_lines = [line for line in workflow_history if line.strip()]

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 from .kernel import (
@@ -7,7 +8,6 @@ from .kernel import (
     PolicyEngine,
     PromptEngine,
     StorageEngine,
-    SkillEngine,
 )
 from .kernel.model_router import ModelRouter
 
@@ -23,13 +23,14 @@ class AgentRuntime:
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
+        self.packaged_prompts_root = Path(__file__).resolve().parent / "prompts"
+        self.packaged_skills_root = Path(__file__).resolve().parent.parent / "skills"
         self.provider = str(provider).strip().lower() or "ollama"
         self.mode = mode
         self.state = StorageEngine(workspace=self.workspace, session_id=session_id)
         if session_id is not None:
             self.state.load_state()
         self.model_router = ModelRouter(provider=self.provider, model_name=model_name)
-        self.skill_engine = SkillEngine(workspace=self.workspace)
         self.prompt_engine = PromptEngine(workspace=self.workspace, token_window_limit=9000)
         self.policy = PolicyEngine()
         self.engine = FlowEngine(
@@ -37,12 +38,35 @@ class AgentRuntime:
             mode=self.mode,
             model_router=self.model_router,
             prompt_engine=self.prompt_engine,
-            skill_engine=self.skill_engine,
             policy_engine=self.policy,
             approval_handler=self._default_approval_prompt,
         )
 
         self._persist()
+
+    def _bootstrap_runtime_assets(self) -> None:
+        runtime_prompts_root = self.workspace / "prompts"
+        runtime_skills_root = self.workspace / "skills"
+        runtime_prompts_root.mkdir(parents=True, exist_ok=True)
+        runtime_skills_root.mkdir(parents=True, exist_ok=True)
+
+        for file_name in ("agent_system_prompt.json", "agent_role_description.json"):
+            source = self.packaged_prompts_root / file_name
+            target = runtime_prompts_root / file_name
+            if source.exists() and not target.exists():
+                shutil.copy2(source, target)
+
+        for scope in ("core-agent", "all-agents"):
+            source_scope = self.packaged_skills_root / scope
+            target_scope = runtime_skills_root / scope
+            target_scope.mkdir(parents=True, exist_ok=True)
+            if not source_scope.exists():
+                continue
+            for skill_dir in sorted(path for path in source_scope.iterdir() if path.is_dir()):
+                target_dir = target_scope / skill_dir.name
+                if target_dir.exists():
+                    continue
+                shutil.copytree(skill_dir, target_dir)
 
     @staticmethod
     def _default_approval_prompt(signature: str) -> tuple[bool, str]:
@@ -142,6 +166,8 @@ class AgentRuntime:
         self,
         show_banner: bool = True,
     ) -> int:
+        self._bootstrap_runtime_assets()
+
         if show_banner:
             print(f"Session {self.state.session_id} started in provider={self.provider}, mode={self.mode}")
             print("Type /help for commands. Type /exit to quit.")
