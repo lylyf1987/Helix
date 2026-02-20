@@ -28,7 +28,7 @@
     "  - keep_reasoning: continue internal reasoning loop without returning to requester yet.",
     "    - Use this when more internal work is needed before final requester-facing response.",
     "    - For this action, action_input should be {}.",
-    "  - understand_skill: load full context of one skill into workflow_history before using it.",
+    "  - understand_skill: load full context of the skill into workflow_history if it doesn't exist yet before using it.",
     "    - For this action, action_input must include:",
     "      - skill_id: target skill folder name (for example: \"search-online-context\").",
     "      - scope: \"all-agents\" or \"core-agent\".",
