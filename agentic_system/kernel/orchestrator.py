@@ -23,7 +23,6 @@ class FlowEngine:
         model_router: ModelRouter | None = None,
         prompt_engine: PromptEngine | None = None,
         skill_engine: Any | None = None,
-        knowledge_engine: Any | None = None,
         policy_engine: Any | None = None,
         approval_handler: Callable[[str], tuple[bool, str]] | None = None,
         limits: dict[str, int] | None = None,
@@ -33,7 +32,6 @@ class FlowEngine:
         self.model_router = model_router
         self.prompt_engine = prompt_engine
         self.skill_engine = skill_engine
-        self.knowledge_engine = knowledge_engine
         self.policy_engine = policy_engine
         self.approval_handler = approval_handler
         self.last_core_agent_prompt: str = ""

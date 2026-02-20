@@ -4,7 +4,6 @@ from pathlib import Path
 
 from .kernel import (
     FlowEngine,
-    KnowledgeEngine,
     PolicyEngine,
     PromptEngine,
     StorageEngine,
@@ -32,7 +31,6 @@ class AgentRuntime:
         self.model_router = ModelRouter(provider=self.provider, model_name=model_name)
         self.skill_engine = SkillEngine(workspace=self.workspace)
         self.prompt_engine = PromptEngine(workspace=self.workspace, token_window_limit=9000)
-        self.knowledge = KnowledgeEngine(workspace=self.workspace)
         self.policy = PolicyEngine()
         self.engine = FlowEngine(
             workspace=self.workspace,
@@ -40,7 +38,6 @@ class AgentRuntime:
             model_router=self.model_router,
             prompt_engine=self.prompt_engine,
             skill_engine=self.skill_engine,
-            knowledge_engine=self.knowledge,
             policy_engine=self.policy,
             approval_handler=self._default_approval_prompt,
         )
