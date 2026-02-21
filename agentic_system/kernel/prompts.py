@@ -23,19 +23,15 @@ class PromptEngine:
             "Update policy:",
             "1) If workflow_history does not add important new information, keep workflow_summary unchanged.",
             "2) Only update when new facts materially change progress, blockers, decisions, or next focus.",
-            "3) If no update is needed, return an empty workflow_summary as sentinel:",
-            "<output>",
-            "{\"workflow_summary\": \"\"}",
-            "</output>",
             "Focus requirements:",
             "1) Brief history from initial user intent to latest major changes.",
+            "2) Key planning, decisions, actions and their relationships.",
             "2) Current status: done, in progress, blocked.",
             "3) Current focus and immediate next useful direction.",
             "4) Prioritize recent workflow_history while preserving key earlier context.",
             "Output format:",
             "Return one JSON object wrapped in <output> and </output>.",
             "Do not output any text outside that block.",
-            "{\"workflow_summary\":\"...\"}",
             "Example:",
             "<output>",
             "{\"workflow_summary\":\"...\"}",
@@ -55,13 +51,12 @@ class PromptEngine:
             "Compression target:",
             "- Output ONE paragraph string, no bullets, no newlines, no markdown, no JSON inside the string.",
             "- Keep it factual and chronological.",
-            "- Keep major decisions, actions with outcomes, blockers, and unresolved loops.",
+            "- Keep major planning, decisions, actions with outcomes, blockers, and unresolved loops.",
             "- Exclude advice, speculation, and future planning.",
             "- Keep it compact; target <= 1200 characters.",
             "Output format:",
             "Return one JSON object wrapped in <output> and </output>.",
             "Do not output any text outside that block.",
-            "{\"workflow_hist_compact\":\"...\"}",
             "Example:",
             "<output>",
             "{\"workflow_hist_compact\":\"...\"}",
@@ -329,6 +324,46 @@ class PromptEngine:
         workflow_hist_compact = str(response.get("workflow_hist_compact", ""))
         state.workflow_hist = [f"[{state.utc_now_iso()}] workflow_compactor> : {workflow_hist_compact}"] + tail
 
+    def _refresh_workflow_summary_if_needed(
+        self,
+        state: Any,
+        model_router: Any,
+    ) -> None:
+        if state is None or model_router is None:
+            return
+        workflow_history: list[str] = getattr(state, "workflow_hist", [])
+        workflow_history_lines = [line for line in workflow_history if line.strip()]
+        workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
+        system_prompt = self._get_system_prompt("workflow_summarizer")
+        sections: list[str] = []
+        if system_prompt.strip():
+            sections.append(system_prompt.strip())
+        sections.append(
+            "\n".join(
+                [
+                    "Workflow Summary:",
+                    workflow_summary if workflow_summary else "(empty)",
+                    "Workflow History:",
+                    "\n".join(workflow_history_lines) if workflow_history_lines else "(empty)",
+                ]
+            )
+        )
+        final_prompt = "\n\n".join(sections)
+        try:
+            out = model_router.generate(
+                role="workflow_summarizer",
+                final_prompt=final_prompt,
+            )
+            if not isinstance(out, dict):
+                return
+            candidate = out.get("workflow_summary")
+            if isinstance(candidate, str):
+                normalized = candidate.strip()
+                if normalized:
+                    state.workflow_summary = normalized
+        except Exception:
+            return
+
     def build_prompt(
         self,
         role: str,
@@ -354,14 +389,23 @@ class PromptEngine:
         )
         final_prompt = "\n\n".join(sections)
         estimated_tokens = max(1, len(final_prompt) // 4)
-        rounds = 0
-        while rounds < 3 and estimated_tokens > self.token_window_limit:
+        if (
+            role == "core_agent"
+            and estimated_tokens > self.token_window_limit
+            and state is not None
+            and model_router is not None
+        ):
+            self._refresh_workflow_summary_if_needed(
+                state=state,
+                model_router=model_router,
+            )
             self._compact_workflow_history(
                 role="workflow_history_compactor",
                 state=state, 
                 compact_keep_last_k=self.compact_keep_last_k, 
                 model_router=model_router
             )
+            workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
             workflow_history: list[str] = getattr(state, "workflow_hist", [])
             workflow_history_lines = [line for line in workflow_history if line.strip()]
             sections: list[str] = []
@@ -378,7 +422,5 @@ class PromptEngine:
                 )
             )
             final_prompt = "\n\n".join(sections)
-            estimated_tokens = max(1, len(final_prompt) // 4)
-            rounds += 1
 
         return final_prompt

@@ -11,8 +11,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         default="ollama",
-        choices=["ollama", "lmstudio", "zai", "openai_compatible"],
-        help="LLM provider. Implemented: ollama, lmstudio, zai, openai_compatible.",
+        choices=["ollama", "lmstudio", "zai", "deepseek", "openai_compatible"],
+        help="LLM provider. Implemented: ollama, lmstudio, zai, deepseek, openai_compatible.",
     )
     parser.add_argument(
         "--mode",

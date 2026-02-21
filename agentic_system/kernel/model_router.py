@@ -250,6 +250,8 @@ class ModelRouter:
             provider_name = "openai_compatible"
         if provider_name == "z.ai":
             provider_name = "zai"
+        if provider_name == "deepseek-ai":
+            provider_name = "deepseek"
         self.provider = provider_name
 
         if provider_name == "ollama":
@@ -285,6 +287,19 @@ class ModelRouter:
                 os.getenv("ZAI_MODEL_THINKING", "glm-5"),
             )
             summarizer_model = os.getenv("ZAI_MODEL_WORKFLOW_SUMMARIZER", core_model)
+        elif provider_name == "deepseek":
+            self.adapter = OpenAICompatibleAdapter(
+                provider="deepseek",
+                base_url_env_keys=("DEEPSEEK_BASE_URL", "OPENAI_COMPAT_BASE_URL", "LMSTUDIO_BASE_URL"),
+                default_base_url="https://api.deepseek.com",
+                api_key_env_keys=("DEEPSEEK_API_KEY", "OPENAI_COMPAT_API_KEY", "LMSTUDIO_API_KEY", "LM_API_TOKEN"),
+                timeout_env_keys=("DEEPSEEK_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS", "LMSTUDIO_TIMEOUT_SECONDS"),
+            )
+            core_model = model_name or os.getenv(
+                "DEEPSEEK_MODEL_CORE_AGENT",
+                os.getenv("DEEPSEEK_MODEL_THINKING", "deepseek-chat"),
+            )
+            summarizer_model = os.getenv("DEEPSEEK_MODEL_WORKFLOW_SUMMARIZER", core_model)
         elif provider_name == "openai_compatible":
             self.adapter = OpenAICompatibleAdapter(
                 provider="openai_compatible",
@@ -302,7 +317,7 @@ class ModelRouter:
             raise NotImplementedError(
                 "Provider "
                 f"'{provider_name}' is not implemented yet. "
-                "Use --provider ollama, lmstudio, zai, or openai_compatible."
+                "Use --provider ollama, lmstudio, zai, deepseek, or openai_compatible."
             )
         self.models: dict[str, str] = {
             "core_agent": core_model,

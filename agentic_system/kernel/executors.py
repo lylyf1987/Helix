@@ -10,7 +10,7 @@ def execute(
     *,
     action_input: dict[str, object],
     workspace: str | Path,
-    timeout_seconds: int = 60,
+    timeout_seconds: int | None = None,
 ) -> dict[str, str]:
     cwd = Path(workspace).expanduser().resolve()
     cwd.mkdir(parents=True, exist_ok=True)
@@ -48,6 +48,10 @@ def execute(
     if has_script and args_value:
         raise ValueError("script_args is only supported when script_path is provided")
 
+    timeout_value: int | None = None
+    if timeout_seconds is not None:
+        timeout_value = max(1, int(timeout_seconds))
+
     if normalized_code_type == "python":
         if has_path:
             result = subprocess.run(
@@ -55,7 +59,7 @@ def execute(
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds,
+                timeout=timeout_value,
             )
         else:
             result = subprocess.run(
@@ -63,7 +67,7 @@ def execute(
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds,
+                timeout=timeout_value,
             )
     elif normalized_code_type == "bash":
         if has_path:
@@ -72,7 +76,7 @@ def execute(
                 cwd=str(cwd),
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds,
+                timeout=timeout_value,
             )
         else:
             result = subprocess.run(
@@ -81,7 +85,7 @@ def execute(
                 shell=True,
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds,
+                timeout=timeout_value,
             )
     else:
         raise ValueError(f"Unsupported code_type: {code_type}")
