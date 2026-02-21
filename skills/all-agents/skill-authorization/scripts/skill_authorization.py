@@ -110,8 +110,20 @@ def run_inspect(workspace: Path, skill_id: str, scope: str) -> dict[str, Any]:
             if p.is_file():
                 scripts.append(str(p.relative_to(workspace)))
 
-    _ = (skill_md_exists, frontmatter, scripts, workspace)
-    return _ok(skill_target=(skill_id if exists else ""))
+    summary = (
+        f"skill_id={skill_id}; action=inspect; scope={scope}; exists={exists}; "
+        f"skill_md_exists={skill_md_exists}; scripts_count={len(scripts)}"
+    )
+    if frontmatter:
+        name = str(frontmatter.get("name", "")).strip()
+        handler = str(frontmatter.get("handler", "")).strip()
+        description = str(frontmatter.get("description", "")).strip()
+        summary = (
+            f"{summary}; name={name or '(empty)'}; "
+            f"handler={handler or '(empty)'}; description={description or '(empty)'}"
+        )
+    _ = workspace
+    return _ok(skill_target=summary)
 
 
 def run_scaffold(workspace: Path, skill_id: str, scope: str, description: str, overwrite: bool) -> dict[str, Any]:
@@ -141,8 +153,14 @@ def run_scaffold(workspace: Path, skill_id: str, scope: str, description: str, o
         skill_md.write_text(template, encoding="utf-8")
         updated.append(str(skill_md.relative_to(workspace)))
 
-    _ = (workspace, created, updated)
-    return _ok(skill_target=skill_id)
+    created_text = ",".join(created) if created else "(none)"
+    updated_text = ",".join(updated) if updated else "(none)"
+    summary = (
+        f"skill_id={skill_id}; action=scaffold; scope={scope}; "
+        f"created={created_text}; updated={updated_text}"
+    )
+    _ = workspace
+    return _ok(skill_target=summary)
 
 
 def parse_args() -> argparse.Namespace:
@@ -164,7 +182,7 @@ def main() -> int:
     workspace = Path(args.workspace).expanduser().resolve()
 
     if not _SKILL_ID_RE.match(skill_id):
-        out = _err()
+        out = _err(skill_target=f"skill_authorization_error: invalid skill_id={skill_id}")
         print(json.dumps(out, ensure_ascii=True))
         return 1
 
@@ -181,8 +199,8 @@ def main() -> int:
             )
         print(json.dumps(out, ensure_ascii=True))
         return 0 if out.get("status") == "ok" else 1
-    except Exception:  # unexpected runtime failure
-        out = _err()
+    except Exception as exc:  # unexpected runtime failure
+        out = _err(skill_target=f"skill_authorization_error: unexpected exception: {exc}")
         print(json.dumps(out, ensure_ascii=True))
         print("unexpected error", file=sys.stderr)
         return 2

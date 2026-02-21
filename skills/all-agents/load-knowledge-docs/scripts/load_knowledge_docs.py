@@ -156,7 +156,12 @@ def run_load(
         items.append(("", resolved))
 
     if not items:
-        return _err()
+        return _err(
+            knowledge_context=(
+                "load_knowledge_error: no valid targets; "
+                f"requested_doc_ids={requested_doc_ids}; requested_doc_paths={requested_doc_paths}"
+            )
+        )
 
     loaded_blocks: list[dict[str, str]] = []
     for title_hint, path in items:
@@ -180,9 +185,20 @@ def run_load(
             }
         )
 
-    knowledge_context = _format_knowledge_context(loaded_blocks)
+    details_prefix = (
+        "load_knowledge_ok: "
+        f"requested={len(items)}; loaded={len(loaded_blocks)}; "
+        f"max_docs={max_docs}; max_chars_per_doc={max_chars_per_doc}"
+    )
+    formatted_docs = _format_knowledge_context(loaded_blocks)
+    knowledge_context = details_prefix if not formatted_docs else f"{details_prefix}\n\n{formatted_docs}"
     if not knowledge_context:
-        return _err()
+        return _err(
+            knowledge_context=(
+                "load_knowledge_error: no readable docs loaded; "
+                f"requested_doc_ids={requested_doc_ids}; requested_doc_paths={requested_doc_paths}"
+            )
+        )
     return _ok(knowledge_context=knowledge_context)
 
 
@@ -212,12 +228,12 @@ def main() -> int:
         )
         print(json.dumps(out, ensure_ascii=True))
         return 0 if out.get("status") == "ok" else 1
-    except ValueError:
-        out = _err()
+    except ValueError as exc:
+        out = _err(knowledge_context=f"load_knowledge_error: invalid numeric input: {exc}")
         print(json.dumps(out, ensure_ascii=True))
         return 1
-    except Exception:
-        out = _err()
+    except Exception as exc:
+        out = _err(knowledge_context=f"load_knowledge_error: unexpected exception: {exc}")
         print(json.dumps(out, ensure_ascii=True))
         print("unexpected error", file=sys.stderr)
         return 2

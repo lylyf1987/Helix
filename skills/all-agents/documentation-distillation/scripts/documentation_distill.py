@@ -135,11 +135,11 @@ def _read_existing_doc(docs_root: Path, catalog_rows: list[dict[str, Any]], doc_
 def run_create(workspace: Path, args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     title = str(args.title).strip()
     if not title:
-        return _err(), 1
+        return _err(doc_path="documentation_error: missing --title for create"), 1
 
     body = str(args.body).strip() if str(args.body).strip() else _build_body(args)
     if not body:
-        return _err(), 1
+        return _err(doc_path="documentation_error: empty content for create"), 1
 
     tags = _parse_tags(args.tags)
     docs_root, _index_root, catalog_path = _knowledge_paths(workspace)
@@ -163,19 +163,19 @@ def run_create(workspace: Path, args: argparse.Namespace) -> tuple[dict[str, Any
     _upsert_catalog_entry(catalog_rows, entry)
     _save_catalog(catalog_path, catalog_rows)
 
-    return _ok(doc_path=str(doc_path)), 0
+    return _ok(doc_path=str(doc_path.relative_to(workspace))), 0
 
 
 def run_update(workspace: Path, args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     doc_id = str(args.doc_id).strip()
     if not doc_id:
-        return _err(), 1
+        return _err(doc_path="documentation_error: missing --doc-id for update"), 1
 
     docs_root, _index_root, catalog_path = _knowledge_paths(workspace)
     catalog_rows = _load_catalog(catalog_path)
     existing = _read_existing_doc(docs_root, catalog_rows, doc_id)
     if existing is None:
-        return _err(), 1
+        return _err(doc_path=f"documentation_error: doc not found for doc_id={doc_id}"), 1
 
     current_title = str(existing.get("title", "")).strip() or "Untitled"
     current_text = str(existing.get("text", ""))
@@ -206,7 +206,7 @@ def run_update(workspace: Path, args: argparse.Namespace) -> tuple[dict[str, Any
                 + "\n\n".join(patch_parts)
             ).strip()
         else:
-            return _err(), 1
+            return _err(doc_path="documentation_error: no update content provided"), 1
 
     doc_path = _doc_path(docs_root, doc_id)
     doc_path.write_text(f"# {next_title}\n\n{next_body}\n", encoding="utf-8")
@@ -232,7 +232,7 @@ def run_update(workspace: Path, args: argparse.Namespace) -> tuple[dict[str, Any
     _upsert_catalog_entry(catalog_rows, entry)
     _save_catalog(catalog_path, catalog_rows)
 
-    return _ok(doc_path=str(doc_path)), 0
+    return _ok(doc_path=str(doc_path.relative_to(workspace))), 0
 
 
 def parse_args() -> argparse.Namespace:
@@ -265,8 +265,8 @@ def main() -> int:
             out, code = run_update(workspace, args)
         print(json.dumps(out, ensure_ascii=True))
         return code
-    except Exception:
-        out = _err()
+    except Exception as exc:
+        out = _err(doc_path=f"documentation_error: unexpected exception: {exc}")
         print(json.dumps(out, ensure_ascii=True))
         print("unexpected error", file=sys.stderr)
         return 2

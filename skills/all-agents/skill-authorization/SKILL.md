@@ -65,7 +65,7 @@ Scaffold example:
 {
   "executed_skill": "skill-authorization",
   "status": "ok|error",
-  "skill_created/updated": "target-skill-id-or-empty"
+  "skill_created/updated": "summary string with action result and affected paths"
 }
 ```
 

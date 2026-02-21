@@ -41,14 +41,29 @@ def run_understand(workspace: Path, skill_id: str, scope: str) -> dict[str, Any]
     skill_md_path = skill_dir / "SKILL.md"
 
     if not skill_dir.exists() or not skill_dir.is_dir():
-        return _err()
+        return _err(
+            skill_context=(
+                "load_skill_error: skill directory not found; "
+                f"scope={scope}; skill_id={skill_id}; expected_path={skill_dir}"
+            )
+        )
     if not skill_md_path.exists():
-        return _err()
+        return _err(
+            skill_context=(
+                "load_skill_error: SKILL.md not found; "
+                f"scope={scope}; skill_id={skill_id}; expected_path={skill_md_path}"
+            )
+        )
 
     try:
         skill_md = skill_md_path.read_text(encoding="utf-8")
-    except OSError:
-        return _err()
+    except OSError as exc:
+        return _err(
+            skill_context=(
+                "load_skill_error: failed to read SKILL.md; "
+                f"scope={scope}; skill_id={skill_id}; error={exc}"
+            )
+        )
 
     scripts = _list_script_paths(skill_dir)
     scripts_text = "\n".join(f"- {path}" for path in scripts) if scripts else "- (none)"
@@ -83,7 +98,7 @@ def main() -> int:
     workspace = Path(args.workspace).expanduser().resolve()
 
     if not skill_id:
-        out = _err()
+        out = _err(skill_context="load_skill_error: empty --skill-id")
         print(json.dumps(out, ensure_ascii=True))
         return 1
 
@@ -91,8 +106,8 @@ def main() -> int:
         out = run_understand(workspace=workspace, skill_id=skill_id, scope=scope)
         print(json.dumps(out, ensure_ascii=True))
         return 0 if out.get("status") == "ok" else 1
-    except Exception:
-        out = _err()
+    except Exception as exc:
+        out = _err(skill_context=f"load_skill_error: unexpected exception: {exc}")
         print(json.dumps(out, ensure_ascii=True))
         print("unexpected error", file=sys.stderr)
         return 2

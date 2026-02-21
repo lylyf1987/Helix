@@ -211,7 +211,13 @@ def run(
             row["error"] = str(exc)
         fetched_rows.append(row)
 
-    payload["fetched_context"] = _format_fetched_context(fetched_rows)
+    summary = (
+        "search_ok: "
+        f"query={query!r}; search_results={len(results)}; fetched={len(fetched_rows)}; "
+        f"searxng_base_url={searxng_base_url}"
+    )
+    details = _format_fetched_context(fetched_rows)
+    payload["fetched_context"] = summary if not details else f"{summary}\n\n{details}"
 
     return payload
 
