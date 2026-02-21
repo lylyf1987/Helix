@@ -30,7 +30,7 @@ class AgentRuntime:
         if session_id is not None:
             self.state.load_state()
         self.model_router = ModelRouter(provider=self.provider, model_name=model_name)
-        self.prompt_engine = PromptEngine(workspace=self.workspace, token_window_limit=int(128000 * 0.7))
+        self.prompt_engine = PromptEngine(workspace=self.workspace, token_window_limit=int(128000 * 0.7), compact_keep_last_k=10)
         self.engine = FlowEngine(
             workspace=self.workspace,
             mode=self.mode,
@@ -70,10 +70,17 @@ class AgentRuntime:
         print()
         print("Runtime confirmation required for exec action.")
         print(signature)
-        print("Approve this execution? [y/N]")
+        print("Approve this execution? [y/N/s/p]")
+        print("  y: allow once")
+        print("  s: allow same exact exec for this session")
+        print("  p: allow same script/pattern for this session")
         choice = input("> ").strip().lower()
         if choice in {"y", "yes", "once"}:
             return True, "once"
+        if choice in {"s", "session", "exact"}:
+            return True, "session"
+        if choice in {"p", "pattern"}:
+            return True, "pattern"
         return False, "deny"
 
     def _help_text(self) -> str:
@@ -101,6 +108,8 @@ class AgentRuntime:
                 f"full_proc_hist_lines={len(self.state.full_proc_hist)}",
                 f"workflow_hist_lines={len(self.state.workflow_hist)}",
                 f"action_hist_lines={len(getattr(self.state, 'action_hist', []))}",
+                f"exec_approval_exact={len(getattr(self.state, 'exec_approval_exact', []))}",
+                f"exec_approval_pattern={len(getattr(self.state, 'exec_approval_pattern', []))}",
             ]
         )
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shlex
 from copy import deepcopy
 from pathlib import Path
 from typing import Any, Callable
@@ -44,9 +45,56 @@ class FlowEngine:
             state.workflow_summary = ""
         if not isinstance(getattr(state, "action_hist", None), list):
             state.action_hist = []
+        if not isinstance(getattr(state, "exec_approval_exact", None), list):
+            state.exec_approval_exact = []
+        if not isinstance(getattr(state, "exec_approval_pattern", None), list):
+            state.exec_approval_pattern = []
 
-    def _confirm_exec(self, action_input: dict[str, Any]) -> bool:
+    @staticmethod
+    def _normalize_script_args(raw_script_args: Any) -> list[str]:
+        if isinstance(raw_script_args, (list, tuple)):
+            return [str(arg).strip() for arg in raw_script_args if str(arg).strip()]
+        if isinstance(raw_script_args, str):
+            text = raw_script_args.strip()
+            if not text:
+                return []
+            try:
+                return [arg for arg in shlex.split(text) if arg.strip()]
+            except ValueError:
+                return [text]
+        return []
+
+    def _build_exec_exact_signature(self, action_input: dict[str, Any]) -> str:
+        code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
+        script_path = str(action_input.get("script_path", "")).strip()
+        script = str(action_input.get("script", "")).strip()
+        script_args = self._normalize_script_args(action_input.get("script_args", []))
+        normalized = {
+            "action": "exec",
+            "code_type": code_type,
+            "script_path": script_path,
+            "script": script,
+            "script_args": script_args,
+        }
+        return json.dumps(normalized, ensure_ascii=True, sort_keys=True)
+
+    def _build_exec_pattern_signature(self, action_input: dict[str, Any]) -> str:
+        code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
+        script_path = str(action_input.get("script_path", "")).strip()
+        script = str(action_input.get("script", "")).strip()
+        if script_path:
+            return f"exec|{code_type}|script_path|{script_path}"
+        compact_inline = " ".join(script.split())[:240]
+        return f"exec|{code_type}|inline|{compact_inline}"
+
+    def _confirm_exec(self, state: StorageEngine, action_input: dict[str, Any]) -> bool:
         if str(self.mode).strip().lower() == "auto":
+            return True
+        exact_signature = self._build_exec_exact_signature(action_input)
+        pattern_signature = self._build_exec_pattern_signature(action_input)
+        if exact_signature in state.exec_approval_exact:
+            return True
+        if pattern_signature in state.exec_approval_pattern:
             return True
         if self.approval_handler is None:
             return True
@@ -57,12 +105,25 @@ class FlowEngine:
                 "script_path": str(action_input.get("script_path", "")).strip(),
                 "script_args": action_input.get("script_args", []),
                 "script_preview": str(action_input.get("script", "")).strip()[:240],
+                "approval_keys": {
+                    "exact": exact_signature,
+                    "pattern": pattern_signature,
+                },
             },
             ensure_ascii=True,
         )
         try:
-            allowed, _scope = self.approval_handler(signature)
-            return bool(allowed)
+            allowed, scope = self.approval_handler(signature)
+            if not bool(allowed):
+                return False
+            scope_name = str(scope).strip().lower()
+            if scope_name in {"session", "exact", "allow-session", "allow-exact", "s"}:
+                if exact_signature not in state.exec_approval_exact:
+                    state.exec_approval_exact.append(exact_signature)
+            elif scope_name in {"pattern", "allow-pattern", "p"}:
+                if pattern_signature not in state.exec_approval_pattern:
+                    state.exec_approval_pattern.append(pattern_signature)
+            return True
         except Exception:
             return False
 
@@ -132,8 +193,6 @@ class FlowEngine:
         state.update_state(
             role="core_agent",
             text=raw_response,
-            prompt_engine=prompt_engine,
-            model_router=model_router,
         )
         state.save_state()
 
@@ -145,8 +204,6 @@ class FlowEngine:
                 state.update_state(
                     role="runtime",
                     text="chat_with_sub_agent is disabled in current runtime",
-                    prompt_engine=prompt_engine,
-                    model_router=model_router,
                 )
                 print()
                 print(f"runtime> chat_with_sub_agent is disabled in current runtime")
@@ -156,19 +213,15 @@ class FlowEngine:
                     state.update_state(
                         role="runtime",
                         text="exec action requires object action_input",
-                        prompt_engine=prompt_engine,
-                        model_router=model_router,
                     )
                     print()
                     print(f"runtime> exec action requires object action_input")
                     state.save_state()
                 else:
-                    if not self._confirm_exec(action_input):
+                    if not self._confirm_exec(state, action_input):
                         state.update_state(
                             role="runtime",
                             text="exec denied by requester",
-                            prompt_engine=prompt_engine,
-                            model_router=model_router,
                         )
                         print()
                         print(f"runtime> exec denied by requester")
@@ -182,8 +235,6 @@ class FlowEngine:
                         state.update_state(
                             role="runtime",
                             text=json.dumps(exec_result, ensure_ascii=True),
-                            prompt_engine=prompt_engine,
-                            model_router=model_router,
                         )
                         print()
                         print(f"runtime> {json.dumps(exec_result, ensure_ascii=True)}")
@@ -193,8 +244,6 @@ class FlowEngine:
                         state.update_state(
                             role="runtime",
                             text=f"exec error: {exc}",
-                            prompt_engine=prompt_engine,
-                            model_router=model_router,
                         )
                         print()
                         print(f"runtime> exec error: {exc}")
@@ -205,8 +254,6 @@ class FlowEngine:
                 state.update_state(
                     role="runtime",
                     text=f"unsupported action: {action}",
-                    prompt_engine=prompt_engine,
-                    model_router=model_router,
                 )
                 print()
                 print(f"runtime> get unsupported action from core_agent: {action}")
@@ -233,8 +280,6 @@ class FlowEngine:
             state.update_state(
                 role="core_agent",
                 text=raw_response,
-                prompt_engine=prompt_engine,
-                model_router=model_router,
             )
             state.save_state()
 
@@ -242,8 +287,6 @@ class FlowEngine:
             state.update_state(
                 role="runtime",
                 text=f"max turns reached ({max_turns}); ending current loop",
-                prompt_engine=prompt_engine,
-                model_router=model_router,
             )
             print()
             print(f"runtime> max turns reached ({max_turns}); ending current loop")
@@ -287,8 +330,6 @@ class FlowEngine:
             state.update_state(
                 role="user",
                 text=stripped,
-                prompt_engine=prompt_engine,
-                model_router=model_router,
             )
             state.save_state()
             self._run_core_agent_loop(

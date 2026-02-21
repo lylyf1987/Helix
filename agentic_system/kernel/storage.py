@@ -28,6 +28,8 @@ class StorageEngine:
         self.workflow_hist: list[str] = []
         self.workflow_summary: str = ""
         self.action_hist: list[str] = []
+        self.exec_approval_exact: list[str] = []
+        self.exec_approval_pattern: list[str] = []
 
     def load_state(self) -> bool:
         if not self.state_path.exists():
@@ -48,33 +50,10 @@ class StorageEngine:
         self,
         role: str,
         text: str,
-        prompt_engine: Any,
-        model_router: Any,
     ) -> None:
         line = self._format_line(role, text or "")
         self.full_proc_hist.append(line)
         self.workflow_hist.append(line)
-
-        try:
-            final_prompt = prompt_engine.build_prompt(
-                role="workflow_summarizer",
-                state=self,
-                model_router=model_router,
-            )
-            out = model_router.generate(
-                role="workflow_summarizer",
-                final_prompt=final_prompt,
-            )
-            if not isinstance(out, dict):
-                return
-            candidate = out.get("workflow_summary")
-            if isinstance(candidate, str):
-                normalized = candidate.strip()
-                if normalized:
-                    self.workflow_summary = normalized
-                # empty string means "no update", keep current workflow_summary
-        except Exception:
-            return
 
     @staticmethod
     def utc_now_iso() -> str:
@@ -102,6 +81,8 @@ class StorageEngine:
             "workflow_hist": self.workflow_hist,
             "workflow_summary": self.workflow_summary,
             "action_hist": self.action_hist,
+            "exec_approval_exact": self.exec_approval_exact,
+            "exec_approval_pattern": self.exec_approval_pattern,
         }
 
     def _deserialize_state(self, raw: dict[str, Any]) -> None:
@@ -115,7 +96,11 @@ class StorageEngine:
         workflow_hist = raw.get("workflow_hist", raw.get("llm_hist", []))
         workflow_summary = raw.get("workflow_summary", raw.get("runtime_summary", ""))
         action_hist = raw.get("action_hist", [])
+        exec_approval_exact = raw.get("exec_approval_exact", [])
+        exec_approval_pattern = raw.get("exec_approval_pattern", [])
         self.full_proc_hist = list(full_proc_hist if isinstance(full_proc_hist, list) else [])
         self.workflow_hist = list(workflow_hist if isinstance(workflow_hist, list) else [])
         self.workflow_summary = str(workflow_summary if isinstance(workflow_summary, str) else "")
         self.action_hist = list(action_hist if isinstance(action_hist, list) else [])
+        self.exec_approval_exact = list(exec_approval_exact if isinstance(exec_approval_exact, list) else [])
+        self.exec_approval_pattern = list(exec_approval_pattern if isinstance(exec_approval_pattern, list) else [])
