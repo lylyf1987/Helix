@@ -322,7 +322,7 @@ class PromptEngine:
             final_prompt=final_prompt
         )
         workflow_hist_compact = str(response.get("workflow_hist_compact", ""))
-        state.workflow_hist = [f"[{state.utc_now_iso()}] workflow_compactor> : {workflow_hist_compact}"] + tail
+        state.workflow_hist = [f"[{state.utc_now_iso()}] workflow_compactor> {workflow_hist_compact}"] + tail
 
     def _refresh_workflow_summary_if_needed(
         self,

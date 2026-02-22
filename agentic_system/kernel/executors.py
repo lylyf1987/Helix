@@ -15,6 +15,7 @@ from typing import Any
 @dataclass
 class ExecJob:
     job_id: str
+    job_name: str
     process: subprocess.Popen[Any]
     cwd: Path
     stdout_path: Path
@@ -82,6 +83,7 @@ def start_exec_job(
     action_input: dict[str, object],
     workspace: str | Path,
     job_id: str,
+    job_name: str = "none",
 ) -> ExecJob:
     cwd = Path(workspace).expanduser().resolve()
     cwd.mkdir(parents=True, exist_ok=True)
@@ -116,6 +118,7 @@ def start_exec_job(
 
     return ExecJob(
         job_id=job_id,
+        job_name=str(job_name or "").strip() or "none",
         process=process,
         cwd=cwd,
         stdout_path=stdout_path,
@@ -201,6 +204,7 @@ def execute(
         action_input=action_input,
         workspace=workspace,
         job_id="exec_job_sync",
+        job_name="sync_exec",
     )
     try:
         if timeout_seconds is not None:

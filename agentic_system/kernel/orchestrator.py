@@ -95,30 +95,64 @@ class FlowEngine:
 
     @staticmethod
     def _format_exec_value_lines(label: str, value: Any) -> list[str]:
-        lines = [f"- {label}:"]
+        lines = [f"  - {label}:"]
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=True)
         if not text:
             return lines
         for row in str(text).splitlines():
-            lines.append(f"  {row}")
+            lines.append(f"    {row}")
         return lines
 
-    def _format_exec_result_text(self, exec_result: Any) -> str:
+    @staticmethod
+    def _format_history_block(
+        state: StorageEngine,
+        role: str,
+        first_line: str,
+        continuation_lines: list[str],
+    ) -> str:
+        role_name = str(role or "").strip() or "runtime"
+        prefix = f"[{state.utc_now_iso()}] {role_name}> "
+        lines = [f"{prefix}{first_line}"]
+        for row in continuation_lines:
+            lines.append(f"{row}")
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_ui_block(role: str, first_line: str, continuation_lines: list[str]) -> str:
+        role_name = str(role or "").strip() or "runtime"
+        prefix = f"{role_name}> "
+        lines = [f"{prefix}{first_line}"]
+        for row in continuation_lines:
+            lines.append(f"{row}")
+        return "\n".join(lines)
+
+    def _build_exec_result_lines(self, exec_result: Any) -> list[str]:
         if not isinstance(exec_result, dict):
             lines: list[str] = []
+            lines.append("job \"none\" with id unknown failed with the stdout and stderr below")
             lines.extend(self._format_exec_value_lines("stdout", ""))
             lines.extend(self._format_exec_value_lines("stderr", str(exec_result)))
-            return "\n".join(lines)
+            return lines
         lines = []
+        job_name = str(exec_result.get("job_name", "")).strip() or "none"
         job_id = str(exec_result.get("job_id", "")).strip()
         status = str(exec_result.get("status", "")).strip()
-        if job_id:
-            lines.append(f"- job_id: {job_id}")
-        if status:
-            lines.append(f"- status: {status}")
+        display_job_id = job_id[4:] if job_id.startswith("job_") else (job_id or "unknown")
+        status_text = "finished"
+        if status == "completed":
+            status_text = "completed successfully"
+        elif status == "failed":
+            status_text = "failed"
+        elif status == "cancelled":
+            status_text = "was cancelled"
+        elif status:
+            status_text = status
+        lines.append(
+            f"job \"{job_name}\" with id {display_job_id} {status_text} with the stdout and stderr below"
+        )
         lines.extend(self._format_exec_value_lines("stdout", exec_result.get("stdout", "")))
         lines.extend(self._format_exec_value_lines("stderr", exec_result.get("stderr", "")))
-        return "\n".join(lines)
+        return lines
 
     @staticmethod
     def _sanitize_core_agent_raw_response(raw_response: str) -> str:
@@ -150,23 +184,22 @@ class FlowEngine:
     ) -> str:
         action_name = str(action or "").strip().lower() or "unknown"
         payload = dict(action_input) if isinstance(action_input, dict) else {}
-        prefix = f"[{state.utc_now_iso()}] core_agent"
-        indent = " " * len(prefix)
+        prefix = f"[{state.utc_now_iso()}] core_agent> "
         lines: list[str] = [
-            f"{prefix}> {str(raw_response)}",
-            f"{indent}> next_action: {action_name}",
+            f"{prefix}{str(raw_response)}",
+            f"  - next_action: {action_name}",
         ]
         if payload:
-            lines.append(f"{indent}> action_input:")
+            lines.append(f"  - action_input:")
             for key, value in payload.items():
                 if isinstance(value, str) and "\n" in value:
-                    lines.append(f"{indent}>    - {key}:")
+                    lines.append(f"    - {key}:")
                     for sub_line in value.splitlines():
-                        lines.append(f"{indent}>        {sub_line}")
+                        lines.append(f"      {sub_line}")
                     continue
-                lines.append(f"{indent}>    - {key}: {json.dumps(value, ensure_ascii=True)}")
+                lines.append(f"    - {key}: {json.dumps(value, ensure_ascii=True)}")
         else:
-            lines.append(f"{indent}> action_input: {{}}")
+            lines.append(f"  - action_input: {{}}")
         return "\n".join(lines)
 
     def _build_exec_approval_prompt(
@@ -174,6 +207,7 @@ class FlowEngine:
         action_input: dict[str, Any],
     ) -> str:
         code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
+        job_name = str(action_input.get("job_name", "none")).strip() or "none"
         script_path = str(action_input.get("script_path", "")).strip()
         script_args = self._normalize_script_args(action_input.get("script_args", []))
         script_preview_full = str(action_input.get("script", "")).strip()
@@ -181,6 +215,7 @@ class FlowEngine:
 
         lines = [
             "action: exec",
+            f"- job_name: {job_name}",
             f"- code_type: {code_type}",
             f"- script_path: {script_path if script_path else '(none)'}",
             f"- script_args: {json.dumps(script_args, ensure_ascii=True)}",
@@ -401,6 +436,7 @@ class FlowEngine:
                 status = "completed" if return_code == 0 else "failed"
             out.append(
                 {
+                    "job_name": str(job.job_name),
                     "job_id": job_id,
                     "status": status,
                     "stdout": str(result.get("stdout", "")),
@@ -528,30 +564,44 @@ class FlowEngine:
                         state.save_state()
                         break
                     try:
+                        job_name = str(action_input.get("job_name", "none")).strip() or "none"
                         job_id = f"job_{uuid4().hex[:8]}"
                         job = start_exec_job(
                             action_input=action_input,
                             workspace=self.workspace,
                             job_id=job_id,
+                            job_name=job_name,
                         )
                         print()
                         print(
                             "runtime> [exec started] "
-                            f"job_id={job_id} (Ctrl+C to cancel all, /cancel {job_id} to cancel this job)"
+                            f"job_name={job_name} job_id={job_id} "
+                            f"(Ctrl+C to cancel all, /cancel {job_id} to cancel this job)"
                         )
 
                         exec_results = self._wait_for_exec_jobs([job])
                         for exec_result in exec_results:
-                            exec_text = self._format_exec_result_text(exec_result)
+                            exec_lines = self._build_exec_result_lines(exec_result)
+                            if not exec_lines:
+                                continue
+                            first_line = exec_lines[0]
+                            continuation_lines = exec_lines[1:]
+                            history_text = self._format_history_block(
+                                state=state,
+                                role="runtime",
+                                first_line=first_line,
+                                continuation_lines=continuation_lines,
+                            )
+                            ui_text = self._format_ui_block(
+                                role="runtime",
+                                first_line=first_line,
+                                continuation_lines=continuation_lines,
+                            )
                             state.update_state(
-                                text=self._format_history_record(
-                                    state=state,
-                                    role="runtime",
-                                    text=exec_text,
-                                ),
+                                text=history_text,
                             )
                             print()
-                            print(f"runtime> {exec_text}")
+                            print(ui_text)
                             state.save_state()
 
                     except Exception as exc:
