@@ -141,15 +141,12 @@ class FlowEngine:
     def _build_exec_approval_prompt(
         self,
         action_input: dict[str, Any],
-        *,
-        exact_signature: str,
-        pattern_signature: str,
     ) -> str:
         code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
         script_path = str(action_input.get("script_path", "")).strip()
         script_args = self._normalize_script_args(action_input.get("script_args", []))
         script_preview_full = str(action_input.get("script", "")).strip()
-        script_preview = script_preview_full[:240]
+        script_preview = script_preview_full[:500]
 
         lines = [
             "action: exec",
@@ -161,17 +158,10 @@ class FlowEngine:
         if script_preview:
             for row in script_preview.splitlines():
                 lines.append(f"    {row}")
-            if len(script_preview_full) > 240:
+            if len(script_preview_full) > 500:
                 lines.append("    ... (truncated)")
         else:
             lines.append("    (empty)")
-        lines.extend(
-            [
-                "- approval_keys:",
-                f"  - exact: {exact_signature}",
-                f"  - pattern: {pattern_signature}",
-            ]
-        )
         return "\n".join(lines)
 
     def _confirm_exec(self, state: StorageEngine, action_input: dict[str, Any]) -> bool:
@@ -187,8 +177,6 @@ class FlowEngine:
             return True
         signature = self._build_exec_approval_prompt(
             action_input=action_input,
-            exact_signature=exact_signature,
-            pattern_signature=pattern_signature,
         )
         try:
             allowed, scope = self.approval_handler(signature)
