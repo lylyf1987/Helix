@@ -48,20 +48,15 @@ class StorageEngine:
 
     def update_state(
         self,
-        role: str,
         text: str,
     ) -> None:
-        line = self._format_line(role, text or "")
+        line = str(text or "")
         self.full_proc_hist.append(line)
         self.workflow_hist.append(line)
 
     @staticmethod
     def utc_now_iso() -> str:
         return datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
-
-    @classmethod
-    def _format_line(cls, role: str, text: str) -> str:
-        return f"[{cls.utc_now_iso()}] {role}> : {text}"
 
     @classmethod
     def _format_action_line(cls, role: str, action: str, action_input: dict[str, Any]) -> str:

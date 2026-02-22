@@ -137,6 +137,11 @@ class FlowEngine:
         return "\n".join(lines)
 
     @staticmethod
+    def _format_history_record(state: StorageEngine, role: str, text: str) -> str:
+        role_name = str(role or "").strip() or "runtime"
+        return f"[{state.utc_now_iso()}] {role_name}> {str(text or '')}"
+
+    @staticmethod
     def _format_core_agent_record(
         state: StorageEngine,
         raw_response: str,
@@ -145,10 +150,10 @@ class FlowEngine:
     ) -> str:
         action_name = str(action or "").strip().lower() or "unknown"
         payload = dict(action_input) if isinstance(action_input, dict) else {}
-        prefix = f"[{state.utc_now_iso()}] core_agent> : "
+        prefix = f"[{state.utc_now_iso()}] core_agent"
         indent = " " * len(prefix)
         lines: list[str] = [
-            str(raw_response or ""),
+            f"{prefix}> {str(raw_response)}",
             f"{indent}> next_action: {action_name}",
         ]
         if payload:
@@ -471,7 +476,6 @@ class FlowEngine:
         state.append_action(role="core_agent", action=action, action_input=action_input)
         finish_stream(clean_raw_response)
         state.update_state(
-            role="core_agent",
             text=self._format_core_agent_record(
                 state=state,
                 raw_response=clean_raw_response,
@@ -488,8 +492,11 @@ class FlowEngine:
             elif action == "chat_with_sub_agent":
                 invalid_action_retries = 0
                 state.update_state(
-                    role="runtime",
-                    text="chat_with_sub_agent is disabled in current runtime",
+                    text=self._format_history_record(
+                        state=state,
+                        role="runtime",
+                        text="chat_with_sub_agent is disabled in current runtime",
+                    ),
                 )
                 print()
                 print(f"runtime> chat_with_sub_agent is disabled in current runtime")
@@ -498,8 +505,11 @@ class FlowEngine:
                 invalid_action_retries = 0
                 if not isinstance(action_input, dict):
                     state.update_state(
-                        role="runtime",
-                        text="exec action requires object action_input",
+                        text=self._format_history_record(
+                            state=state,
+                            role="runtime",
+                            text="exec action requires object action_input",
+                        ),
                     )
                     print()
                     print(f"runtime> exec action requires object action_input")
@@ -507,8 +517,11 @@ class FlowEngine:
                 else:
                     if not self._confirm_exec(state, action_input):
                         state.update_state(
-                            role="runtime",
-                            text="exec denied by requester",
+                            text=self._format_history_record(
+                                state=state,
+                                role="runtime",
+                                text="exec denied by requester",
+                            ),
                         )
                         print()
                         print(f"runtime> exec denied by requester")
@@ -531,8 +544,11 @@ class FlowEngine:
                         for exec_result in exec_results:
                             exec_text = self._format_exec_result_text(exec_result)
                             state.update_state(
-                                role="runtime",
-                                text=exec_text,
+                                text=self._format_history_record(
+                                    state=state,
+                                    role="runtime",
+                                    text=exec_text,
+                                ),
                             )
                             print()
                             print(f"runtime> {exec_text}")
@@ -540,8 +556,11 @@ class FlowEngine:
 
                     except Exception as exc:
                         state.update_state(
-                            role="runtime",
-                            text=f"exec error: {exc}",
+                            text=self._format_history_record(
+                                state=state,
+                                role="runtime",
+                                text=f"exec error: {exc}",
+                            ),
                         )
                         print()
                         print(f"runtime> exec error: {exc}")
@@ -556,8 +575,11 @@ class FlowEngine:
                     "and select one allowed action from chat_with_requester, keep_reasoning, and exec."
                 )
                 state.update_state(
-                    role="runtime",
-                    text=correction,
+                    text=self._format_history_record(
+                        state=state,
+                        role="runtime",
+                        text=correction,
+                    ),
                 )
                 print()
                 print(f"runtime> {correction}")
@@ -568,8 +590,11 @@ class FlowEngine:
                         "ending current loop"
                     )
                     state.update_state(
-                        role="runtime",
-                        text=stop_reason,
+                        text=self._format_history_record(
+                            state=state,
+                            role="runtime",
+                            text=stop_reason,
+                        ),
                     )
                     print()
                     print(f"runtime> {stop_reason}")
@@ -595,7 +620,6 @@ class FlowEngine:
             state.append_action(role="core_agent", action=action, action_input=action_input)
             finish_stream(clean_raw_response)
             state.update_state(
-                role="core_agent",
                 text=self._format_core_agent_record(
                     state=state,
                     raw_response=clean_raw_response,
@@ -607,8 +631,11 @@ class FlowEngine:
 
         if turns >= max_turns:
             state.update_state(
-                role="runtime",
-                text=f"max turns reached ({max_turns}); ending current loop",
+                text=self._format_history_record(
+                    state=state,
+                    role="runtime",
+                    text=f"max turns reached ({max_turns}); ending current loop",
+                ),
             )
             print()
             print(f"runtime> max turns reached ({max_turns}); ending current loop")
@@ -650,8 +677,11 @@ class FlowEngine:
                 continue
 
             state.update_state(
-                role="user",
-                text=stripped,
+                text=self._format_history_record(
+                    state=state,
+                    role="user",
+                    text=stripped,
+                ),
             )
             state.save_state()
             self._run_core_agent_loop(
