@@ -88,6 +88,92 @@ class FlowEngine:
         compact_inline = " ".join(script.split())[:240]
         return f"exec|{code_type}|inline|{compact_inline}"
 
+    @staticmethod
+    def _format_exec_value_lines(label: str, value: Any) -> list[str]:
+        lines = [f"- {label}:"]
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=True)
+        if not text:
+            lines.append("  (empty)")
+            return lines
+        for row in str(text).splitlines():
+            lines.append(f"  {row}")
+        return lines
+
+    def _format_exec_result_text(self, exec_result: Any) -> str:
+        if not isinstance(exec_result, dict):
+            lines: list[str] = []
+            lines.extend(self._format_exec_value_lines("stdout", ""))
+            lines.extend(self._format_exec_value_lines("stderr", str(exec_result)))
+            return "\n".join(lines)
+        lines = []
+        lines.extend(self._format_exec_value_lines("stdout", exec_result.get("stdout", "")))
+        lines.extend(self._format_exec_value_lines("stderr", exec_result.get("stderr", "")))
+        return "\n".join(lines)
+
+    @staticmethod
+    def _format_core_agent_record(
+        state: StorageEngine,
+        raw_response: str,
+        action: str,
+        action_input: Any,
+    ) -> str:
+        action_name = str(action or "").strip().lower() or "unknown"
+        payload = dict(action_input) if isinstance(action_input, dict) else {}
+        prefix = f"[{state.utc_now_iso()}] core_agent> : "
+        indent = " " * len(prefix)
+        lines: list[str] = [
+            str(raw_response or ""),
+            f"{indent}> next_action: {action_name}",
+        ]
+        if payload:
+            lines.append(f"{indent}> action_input:")
+            for key, value in payload.items():
+                if isinstance(value, str) and "\n" in value:
+                    lines.append(f"{indent}>    - {key}:")
+                    for sub_line in value.splitlines():
+                        lines.append(f"{indent}>        {sub_line}")
+                    continue
+                lines.append(f"{indent}>    - {key}: {json.dumps(value, ensure_ascii=True)}")
+        else:
+            lines.append(f"{indent}> action_input: {{}}")
+        return "\n".join(lines)
+
+    def _build_exec_approval_prompt(
+        self,
+        action_input: dict[str, Any],
+        *,
+        exact_signature: str,
+        pattern_signature: str,
+    ) -> str:
+        code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
+        script_path = str(action_input.get("script_path", "")).strip()
+        script_args = self._normalize_script_args(action_input.get("script_args", []))
+        script_preview_full = str(action_input.get("script", "")).strip()
+        script_preview = script_preview_full[:240]
+
+        lines = [
+            "action: exec",
+            f"- code_type: {code_type}",
+            f"- script_path: {script_path if script_path else '(none)'}",
+            f"- script_args: {json.dumps(script_args, ensure_ascii=True)}",
+            "- script_preview:",
+        ]
+        if script_preview:
+            for row in script_preview.splitlines():
+                lines.append(f"    {row}")
+            if len(script_preview_full) > 240:
+                lines.append("    ... (truncated)")
+        else:
+            lines.append("    (empty)")
+        lines.extend(
+            [
+                "- approval_keys:",
+                f"  - exact: {exact_signature}",
+                f"  - pattern: {pattern_signature}",
+            ]
+        )
+        return "\n".join(lines)
+
     def _confirm_exec(self, state: StorageEngine, action_input: dict[str, Any]) -> bool:
         if str(self.mode).strip().lower() == "auto":
             return True
@@ -99,19 +185,10 @@ class FlowEngine:
             return True
         if self.approval_handler is None:
             return True
-        signature = json.dumps(
-            {
-                "action": "exec",
-                "code_type": str(action_input.get("code_type", "bash")).strip().lower(),
-                "script_path": str(action_input.get("script_path", "")).strip(),
-                "script_args": action_input.get("script_args", []),
-                "script_preview": str(action_input.get("script", "")).strip()[:240],
-                "approval_keys": {
-                    "exact": exact_signature,
-                    "pattern": pattern_signature,
-                },
-            },
-            ensure_ascii=True,
+        signature = self._build_exec_approval_prompt(
+            action_input=action_input,
+            exact_signature=exact_signature,
+            pattern_signature=pattern_signature,
         )
         try:
             allowed, scope = self.approval_handler(signature)
@@ -195,7 +272,12 @@ class FlowEngine:
         finish_stream(raw_response)
         state.update_state(
             role="core_agent",
-            text=raw_response,
+            text=self._format_core_agent_record(
+                state=state,
+                raw_response=raw_response,
+                action=action,
+                action_input=action_input,
+            ),
         )
         state.save_state()
 
@@ -237,12 +319,13 @@ class FlowEngine:
                             action_input=action_input,
                             workspace=self.workspace,
                         )
+                        exec_text = self._format_exec_result_text(exec_result)
                         state.update_state(
                             role="runtime",
-                            text=json.dumps(exec_result, ensure_ascii=True),
+                            text=exec_text,
                         )
                         print()
-                        print(f"runtime> {json.dumps(exec_result, ensure_ascii=True)}")
+                        print(f"runtime> {exec_text}")
                         state.save_state()
 
                     except Exception as exc:
@@ -302,7 +385,12 @@ class FlowEngine:
             finish_stream(raw_response)
             state.update_state(
                 role="core_agent",
-                text=raw_response,
+                text=self._format_core_agent_record(
+                    state=state,
+                    raw_response=raw_response,
+                    action=action,
+                    action_input=action_input,
+                ),
             )
             state.save_state()
 
