@@ -93,7 +93,6 @@ class FlowEngine:
         lines = [f"- {label}:"]
         text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=True)
         if not text:
-            lines.append("  (empty)")
             return lines
         for row in str(text).splitlines():
             lines.append(f"  {row}")
@@ -160,8 +159,6 @@ class FlowEngine:
                 lines.append(f"    {row}")
             if len(script_preview_full) > 500:
                 lines.append("    ... (truncated)")
-        else:
-            lines.append("    (empty)")
         return "\n".join(lines)
 
     def _confirm_exec(self, state: StorageEngine, action_input: dict[str, Any]) -> bool:
