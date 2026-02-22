@@ -119,10 +119,10 @@ class FlowEngine:
     ) -> str:
         action_name = str(action or "").strip().lower() or "unknown"
         payload = dict(action_input) if isinstance(action_input, dict) else {}
-        prefix = f"[{state.utc_now_iso()}] core_agent> : "
+        prefix = f"[{state.utc_now_iso()}] core_agent"
         indent = " " * len(prefix)
         lines: list[str] = [
-            str(raw_response or ""),
+            f"{prefix}> {raw_response}",
             f"{indent}> next_action: {action_name}",
         ]
         if payload:
