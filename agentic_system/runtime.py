@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import shutil
 from pathlib import Path
 
@@ -19,13 +20,18 @@ class AgentRuntime:
         mode: str = "controlled",
         session_id: str | None = None,
         model_name: str | None = None,
+        vision_provider: str = "none",
+        vision_model: str = "none",
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
         self.packaged_prompts_root = Path(__file__).resolve().parent / "prompts"
         self.packaged_skills_root = Path(__file__).resolve().parent.parent / "skills"
         self.provider = str(provider).strip().lower() or "ollama"
+        self.vision_provider = str(vision_provider).strip() or "none"
+        self.vision_model = str(vision_model).strip() or "none"
         self.mode = mode
+        self._configure_vision_environment()
         self.state = StorageEngine(workspace=self.workspace, session_id=session_id)
         if session_id is not None:
             self.state.load_state()
@@ -41,6 +47,10 @@ class AgentRuntime:
         )
 
         self._persist()
+
+    def _configure_vision_environment(self) -> None:
+        os.environ["VISION_PROVIDER"] = self.vision_provider
+        os.environ["VISION_MODEL"] = self.vision_model
 
     def _bootstrap_runtime_assets(self) -> None:
         runtime_prompts_root = self.workspace / "prompts"
@@ -134,6 +144,8 @@ class AgentRuntime:
             [
                 f"session_id={self.state.session_id}",
                 f"provider={self.provider}",
+                f"vision_provider={self.vision_provider}",
+                f"vision_model={self.vision_model}",
                 f"mode={self.mode}",
                 f"full_proc_hist_lines={len(self.state.full_proc_hist)}",
                 f"workflow_hist_lines={len(self.state.workflow_hist)}",

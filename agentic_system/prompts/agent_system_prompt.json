@@ -112,6 +112,8 @@
     "",
     "- Skills and Knowledge:",
     "  - Before using any non-loader skill, use built-in loader \"load-skill\" to load that skill's full reference into workflow_history.",
-    "  - Use knowledge metadata first; then use built-in loader \"load-knowledge-docs\" to load only the docs needed for current reasoning."
+    "  - Use knowledge metadata first; then use built-in loader \"load-knowledge-docs\" to load only the docs needed for current reasoning.",
+    "  - For image-understanding skill, core agent must provide a concrete query context (what to evaluate in the image).",
+    "  - If image-understanding returns error_code=vision_config_missing, do not retry internally; choose chat_with_requester and ask requester to configure vision provider/model."
   ]
 }

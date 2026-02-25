@@ -31,6 +31,20 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Provider model name override.",
     )
+    parser.add_argument(
+        "--vision-provider",
+        "--vision_provider",
+        dest="vision_provider",
+        default="none",
+        help="Vision provider for image-understanding skill (default: none).",
+    )
+    parser.add_argument(
+        "--vision-model",
+        "--vision_model",
+        dest="vision_model",
+        default="none",
+        help="Vision model for image-understanding skill (default: none).",
+    )
     return parser
 
 
@@ -45,6 +59,8 @@ def main() -> int:
         mode=args.mode,
         session_id=args.session_id,
         model_name=args.model_name,
+        vision_provider=args.vision_provider,
+        vision_model=args.vision_model,
     )
     return runtime.start()
 
