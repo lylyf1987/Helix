@@ -31,6 +31,23 @@ Core Agent should always set one of:
 
 This keeps image artifacts easy to locate and reuse in later steps.
 
+Path policy:
+
+- Use runtime-workspace-local paths only.
+- Do not write outside runtime workspace.
+- Recommended directory pattern: `generated_images/<task_slug>/`.
+- Keep path names simple and deterministic for later reuse.
+
+# Size Selection Rule
+
+Core Agent should always set `--size` based on task intent:
+
+- Square/object/icon/avatar style requests: `1024x1024`
+- Portrait/poster style requests: `1024x1536`
+- Landscape/hero/banner style requests: `1536x1024`
+
+If provider/model rejects requested size, retry once with `1024x1024`.
+
 # Config Priority
 
 1. `script_args` values (`--provider`, `--model`, `--base-url`, `--api-key`)
