@@ -27,9 +27,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Runtime workspace path (absolute or relative).",
     )
     parser.add_argument(
-        "--model-name",
+        "--model",
+        dest="model",
         default=None,
-        help="Provider model name override.",
+        help="Core agent model name override.",
     )
     parser.add_argument(
         "--vision-provider",
@@ -45,6 +46,20 @@ def build_parser() -> argparse.ArgumentParser:
         default="none",
         help="Vision model for image-understanding skill (default: none).",
     )
+    parser.add_argument(
+        "--image-gen-provider",
+        "--image_gen_provider",
+        dest="image_gen_provider",
+        default="none",
+        help="Image generation provider for image-generation skill (default: none).",
+    )
+    parser.add_argument(
+        "--image-gen-model",
+        "--image_gen_model",
+        dest="image_gen_model",
+        default="none",
+        help="Image generation model for image-generation skill (default: none).",
+    )
     return parser
 
 
@@ -58,9 +73,11 @@ def main() -> int:
         provider=args.provider,
         mode=args.mode,
         session_id=args.session_id,
-        model_name=args.model_name,
+        model_name=args.model,
         vision_provider=args.vision_provider,
         vision_model=args.vision_model,
+        image_gen_provider=args.image_gen_provider,
+        image_gen_model=args.image_gen_model,
     )
     return runtime.start()
 

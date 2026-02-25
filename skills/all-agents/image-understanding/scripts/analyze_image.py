@@ -6,6 +6,7 @@ import base64
 import json
 import mimetypes
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -50,6 +51,17 @@ def _err(
         "model_used": model_used,
         "error_code": error_code,
     }
+
+
+def _read_http_error_body(exc: HTTPError) -> str:
+    try:
+        body = exc.read().decode("utf-8", errors="replace").strip()
+    except Exception:
+        body = ""
+    if not body:
+        return ""
+    compact = re.sub(r"\s+", " ", body).strip()
+    return compact[:800] + ("..." if len(compact) > 800 else "")
 
 
 def _post_json(url: str, headers: dict[str, str], payload: dict[str, Any], timeout: int) -> dict[str, Any]:
@@ -239,7 +251,11 @@ def _call_openai_compatible(
 
     try:
         raw = _post_json(endpoint, headers=headers, payload=payload, timeout=timeout)
-    except (HTTPError, URLError) as exc:
+    except HTTPError as exc:
+        body = _read_http_error_body(exc)
+        detail = f"; body={body}" if body else ""
+        return "", f"vision_runtime_error: request failed: HTTP {exc.code}{detail}"
+    except URLError as exc:
         return "", f"vision_runtime_error: request failed: {exc}"
     except Exception as exc:
         return "", f"vision_runtime_error: unexpected request error: {exc}"
@@ -277,7 +293,11 @@ def _call_ollama(
     headers = {"Content-Type": "application/json"}
     try:
         raw = _post_json(endpoint, headers=headers, payload=payload, timeout=timeout)
-    except (HTTPError, URLError) as exc:
+    except HTTPError as exc:
+        body = _read_http_error_body(exc)
+        detail = f"; body={body}" if body else ""
+        return "", f"vision_runtime_error: request failed: HTTP {exc.code}{detail}"
+    except URLError as exc:
         return "", f"vision_runtime_error: request failed: {exc}"
     except Exception as exc:
         return "", f"vision_runtime_error: unexpected request error: {exc}"
@@ -297,11 +317,24 @@ def run_analysis(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     image_source = image_url_arg if image_url_arg else image_path_arg
 
     provider, model, base_url, api_key = _resolve_vision_config(args)
-    if provider in {"none", ""} or model in {"none", ""}:
+    if provider in {"none", ""}:
         out = _err(
             image_source=image_source,
             analysis=(
                 "vision provider/model not configured; cannot run image analysis in runtime. "
+                "Please return to requester and ask for vision config."
+            ),
+            provider_used=provider or "none",
+            model_used=model or "none",
+            error_code="vision_config_missing",
+        )
+        return out, 1
+
+    if model in {"none", ""}:
+        out = _err(
+            image_source=image_source,
+            analysis=(
+                "vision model not configured; cannot run image analysis in runtime. "
                 "Please return to requester and ask for vision config."
             ),
             provider_used=provider or "none",

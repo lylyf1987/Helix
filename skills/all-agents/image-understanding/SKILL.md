@@ -1,7 +1,7 @@
 ---
 name: Image Understanding
 handler: scripts/analyze_image.py
-description: Analyze image content against a query context using a vision-capable model.
+description: Analyze image content against a query context using a configured vision model provider.
 required_tools: exec
 recommended_tools: exec
 forbidden_tools:
@@ -21,12 +21,6 @@ The Core Agent must prepare the query context before calling this skill:
 2. Make it explicit and testable (for example: style constraints, objects, composition, brand fit).
 3. Keep it concise and task-oriented.
 
-Examples:
-
-- "Describe this image for a pet-store hero banner."
-- "Check whether this image matches modern minimal blue-white palette."
-- "Identify if the image contains two birds on a branch and describe mood."
-
 # Runtime Script
 
 - Script path: `skills/all-agents/image-understanding/scripts/analyze_image.py`
@@ -38,23 +32,26 @@ Examples:
 2. `stderr` should be used only for unexpected runtime failures.
 3. Keep output concise and structured so runtime history is readable.
 
-# Config and Terminal Error Rule
+# Config and Error Rule
 
-This skill requires vision model configuration:
+This script is model-provider based (no MCP path).
 
-- provider (`--provider` or `VISION_PROVIDER`)
-- model (`--model` or `VISION_MODEL`)
+Required config:
+
+- `--provider` (or `VISION_PROVIDER`) in:
+  - `openai_compatible|zai|deepseek|lmstudio|ollama`
+- `--model` (or `VISION_MODEL`)
 
 If missing, script returns:
 
 - `status = "error"`
 - `error_code = "vision_config_missing"`
 
-When `error_code` is `vision_config_missing`, Core Agent must stop internal retries and choose `chat_with_requester` to request configuration from the requester.
+When `error_code` is `vision_config_missing`, Core Agent should choose `chat_with_requester` and ask requester to configure vision provider/model.
 
 # Action Input Templates
 
-Remote image URL example:
+Remote URL with Ollama:
 
 ```json
 {
@@ -62,14 +59,14 @@ Remote image URL example:
   "script_path": "skills/all-agents/image-understanding/scripts/analyze_image.py",
   "script_args": [
     "--image-url", "https://example.com/image.jpg",
-    "--query", "Describe this image and check if it fits modern blue-white minimal style",
-    "--provider", "openai_compatible",
-    "--model", "gpt-4o-mini"
+    "--query", "Describe this image for a pet-store hero banner",
+    "--provider", "ollama",
+    "--model", "llava:latest"
   ]
 }
 ```
 
-Local image file example:
+Local image with OpenAI-compatible:
 
 ```json
 {
@@ -78,8 +75,9 @@ Local image file example:
   "script_args": [
     "--image-path", "assets/banner.jpg",
     "--query", "Describe objects, color palette, and mood for marketing banner",
-    "--provider", "ollama",
-    "--model", "llava:latest"
+    "--provider", "openai_compatible",
+    "--model", "gpt-4o-mini",
+    "--base-url", "<OPENAI_COMPAT_BASE_URL>"
   ]
 }
 ```
@@ -100,7 +98,5 @@ Local image file example:
 
 # Notes
 
-- Supported providers in this script: `openai_compatible`, `openai`, `zai`, `deepseek`, `lmstudio`, `ollama`.
-- Provider aliases are normalized internally (for example `openai` -> `openai_compatible`).
-- For OpenAI-compatible providers, `VISION_BASE_URL` and `VISION_API_KEY` can be set.
-- For Ollama, default base URL is `OLLAMA_BASE_URL` or `http://localhost:11434`.
+- For `ollama`, URL input is downloaded first and sent as image bytes.
+- HTTP 4xx/5xx response bodies from provider calls are surfaced in `analysis` for debugging.

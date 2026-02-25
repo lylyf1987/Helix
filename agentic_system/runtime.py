@@ -22,6 +22,8 @@ class AgentRuntime:
         model_name: str | None = None,
         vision_provider: str = "none",
         vision_model: str = "none",
+        image_gen_provider: str = "none",
+        image_gen_model: str = "none",
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -30,8 +32,10 @@ class AgentRuntime:
         self.provider = str(provider).strip().lower() or "ollama"
         self.vision_provider = str(vision_provider).strip() or "none"
         self.vision_model = str(vision_model).strip() or "none"
+        self.image_gen_provider = str(image_gen_provider).strip() or "none"
+        self.image_gen_model = str(image_gen_model).strip() or "none"
         self.mode = mode
-        self._configure_vision_environment()
+        self._configure_skill_provider_environment()
         self.state = StorageEngine(workspace=self.workspace, session_id=session_id)
         if session_id is not None:
             self.state.load_state()
@@ -48,9 +52,11 @@ class AgentRuntime:
 
         self._persist()
 
-    def _configure_vision_environment(self) -> None:
+    def _configure_skill_provider_environment(self) -> None:
         os.environ["VISION_PROVIDER"] = self.vision_provider
         os.environ["VISION_MODEL"] = self.vision_model
+        os.environ["IMAGE_GEN_PROVIDER"] = self.image_gen_provider
+        os.environ["IMAGE_GEN_MODEL"] = self.image_gen_model
 
     def _bootstrap_runtime_assets(self) -> None:
         runtime_prompts_root = self.workspace / "prompts"
@@ -146,6 +152,8 @@ class AgentRuntime:
                 f"provider={self.provider}",
                 f"vision_provider={self.vision_provider}",
                 f"vision_model={self.vision_model}",
+                f"image_gen_provider={self.image_gen_provider}",
+                f"image_gen_model={self.image_gen_model}",
                 f"mode={self.mode}",
                 f"full_proc_hist_lines={len(self.state.full_proc_hist)}",
                 f"workflow_hist_lines={len(self.state.workflow_hist)}",
