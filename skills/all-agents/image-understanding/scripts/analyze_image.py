@@ -16,6 +16,14 @@ from urllib.request import Request, urlopen
 _EXECUTED_SKILL = "image-understanding"
 
 
+def _first_non_empty(*values: str) -> str:
+    for value in values:
+        token = str(value or "").strip()
+        if token:
+            return token
+    return ""
+
+
 def _ok(
     *,
     image_source: str,
@@ -88,11 +96,21 @@ def _normalize_provider(raw: str) -> str:
     return alias_map.get(provider, provider)
 
 
-def _resolve_vision_config(args: argparse.Namespace) -> tuple[str, str, str, str]:
-    provider = _normalize_provider(str(args.provider or "").strip() or os.getenv("VISION_PROVIDER", "none"))
-    model = str(args.model or "").strip() or os.getenv("VISION_MODEL", "none")
-    base_url = str(args.base_url or "").strip() or os.getenv("VISION_BASE_URL", "")
-    api_key = str(args.api_key or "").strip() or os.getenv("VISION_API_KEY", "")
+def _resolve_image_analysis_config(args: argparse.Namespace) -> tuple[str, str, str, str]:
+    provider = _normalize_provider(
+        _first_non_empty(
+            str(args.provider or "").strip(),
+            os.getenv("IMAGE_ANALYSIS_PROVIDER", ""),
+            "none",
+        )
+    )
+    model = _first_non_empty(
+        str(args.model or "").strip(),
+        os.getenv("IMAGE_ANALYSIS_MODEL", ""),
+        "none",
+    )
+    base_url = str(args.base_url or "").strip() or os.getenv("IMAGE_ANALYSIS_BASE_URL", "")
+    api_key = str(args.api_key or "").strip() or os.getenv("IMAGE_ANALYSIS_API_KEY", "")
 
     if provider in {"none", ""} or model in {"none", ""}:
         return provider or "none", model or "none", base_url, api_key
@@ -316,7 +334,7 @@ def run_analysis(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     image_path_arg = str(args.image_path or "").strip()
     image_source = image_url_arg if image_url_arg else image_path_arg
 
-    provider, model, base_url, api_key = _resolve_vision_config(args)
+    provider, model, base_url, api_key = _resolve_image_analysis_config(args)
     if provider in {"none", ""}:
         out = _err(
             image_source=image_source,
@@ -467,7 +485,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="")
     parser.add_argument("--base-url", default="")
     parser.add_argument("--api-key", default="")
-    parser.add_argument("--timeout", default=os.getenv("VISION_TIMEOUT_SECONDS", "120"))
+    parser.add_argument(
+        "--timeout",
+        default=_first_non_empty(
+            os.getenv("IMAGE_ANALYSIS_TIMEOUT_SECONDS", ""),
+            "120",
+        ),
+    )
     return parser.parse_args()
 
 
@@ -481,8 +505,16 @@ def main() -> int:
         out = _err(
             image_source=str(args.image_url or args.image_path or ""),
             analysis=f"unexpected runtime exception: {exc}",
-            provider_used=str(args.provider or os.getenv('VISION_PROVIDER', 'none') or "none"),
-            model_used=str(args.model or os.getenv('VISION_MODEL', 'none') or "none"),
+            provider_used=_first_non_empty(
+                str(args.provider or "").strip(),
+                os.getenv("IMAGE_ANALYSIS_PROVIDER", ""),
+                "none",
+            ),
+            model_used=_first_non_empty(
+                str(args.model or "").strip(),
+                os.getenv("IMAGE_ANALYSIS_MODEL", ""),
+                "none",
+            ),
             error_code="vision_unexpected_exception",
         )
         print(json.dumps(out, ensure_ascii=True))

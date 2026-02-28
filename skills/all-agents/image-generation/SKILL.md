@@ -52,8 +52,8 @@ If provider/model rejects requested size, retry once with `1024x1024`.
 
 1. `script_args` values (`--provider`, `--model`, `--base-url`, `--api-key`)
 2. Runtime env injected by UI startup:
-   - `IMAGE_GEN_PROVIDER` from `--image-gen-provider`
-   - `IMAGE_GEN_MODEL` from `--image-gen-model`
+   - `IMAGE_GENERATION_PROVIDER` from `--image-generation-provider`
+   - `IMAGE_GENERATION_MODEL` from `--image-generation-model`
 3. Provider-specific env fallbacks (for example `OLLAMA_BASE_URL`)
 
 If provider/model resolves to `none` or empty, the script returns `image_config_missing`.
@@ -113,5 +113,5 @@ If this skill returns `error_code = "image_generation_unavailable"`, Core Agent 
 - For Ollama, ensure your local runtime supports image generation APIs and the target model is available.
 - If neither `--output-dir` nor `--output-path` is provided, script defaults to `generated_images/`.
 - Recommended startup when using runtime defaults:
-  - `--image-gen-provider ollama`
-  - `--image-gen-model x/z-image-turbo`
+  - `--image-generation-provider ollama`
+  - `--image-generation-model x/z-image-turbo`

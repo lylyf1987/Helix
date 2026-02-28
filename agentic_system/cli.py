@@ -33,30 +33,30 @@ def build_parser() -> argparse.ArgumentParser:
         help="Core agent model name override.",
     )
     parser.add_argument(
-        "--vision-provider",
-        "--vision_provider",
-        dest="vision_provider",
+        "--image-analysis-provider",
+        "--image_analysis_provider",
+        dest="image_analysis_provider",
         default="none",
-        help="Vision provider for image-understanding skill (default: none).",
+        help="Image analysis provider for image-understanding skill (default: none).",
     )
     parser.add_argument(
-        "--vision-model",
-        "--vision_model",
-        dest="vision_model",
+        "--image-analysis-model",
+        "--image_analysis_model",
+        dest="image_analysis_model",
         default="none",
-        help="Vision model for image-understanding skill (default: none).",
+        help="Image analysis model for image-understanding skill (default: none).",
     )
     parser.add_argument(
-        "--image-gen-provider",
-        "--image_gen_provider",
-        dest="image_gen_provider",
+        "--image-generation-provider",
+        "--image_generation_provider",
+        dest="image_generation_provider",
         default="none",
         help="Image generation provider for image-generation skill (default: none).",
     )
     parser.add_argument(
-        "--image-gen-model",
-        "--image_gen_model",
-        dest="image_gen_model",
+        "--image-generation-model",
+        "--image_generation_model",
+        dest="image_generation_model",
         default="none",
         help="Image generation model for image-generation skill (default: none).",
     )
@@ -74,10 +74,10 @@ def main() -> int:
         mode=args.mode,
         session_id=args.session_id,
         model_name=args.model,
-        vision_provider=args.vision_provider,
-        vision_model=args.vision_model,
-        image_gen_provider=args.image_gen_provider,
-        image_gen_model=args.image_gen_model,
+        image_analysis_provider=args.image_analysis_provider,
+        image_analysis_model=args.image_analysis_model,
+        image_generation_provider=args.image_generation_provider,
+        image_generation_model=args.image_generation_model,
     )
     return runtime.start()
 

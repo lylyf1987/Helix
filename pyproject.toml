@@ -7,7 +7,9 @@ name = "agentic-business-system"
 version = "0.1.0"
 description = "Phase 1 scaffold for a terminal-first agentic runtime."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "prompt_toolkit>=3.0.0",
+]
 
 [project.scripts]
 agentic-system = "agentic_system.cli:main"

@@ -38,9 +38,9 @@ This script is model-provider based (no MCP path).
 
 Required config:
 
-- `--provider` (or `VISION_PROVIDER`) in:
+- `--provider` (or runtime env `IMAGE_ANALYSIS_PROVIDER`) in:
   - `openai_compatible|zai|deepseek|lmstudio|ollama`
-- `--model` (or `VISION_MODEL`)
+- `--model` (or runtime env `IMAGE_ANALYSIS_MODEL`)
 
 If missing, script returns:
 

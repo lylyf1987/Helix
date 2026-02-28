@@ -16,6 +16,14 @@ from urllib.request import Request, urlopen
 _EXECUTED_SKILL = "image-generation"
 
 
+def _first_non_empty(*values: str) -> str:
+    for value in values:
+        token = str(value or "").strip()
+        if token:
+            return token
+    return ""
+
+
 def _utc_now_compact() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -56,11 +64,27 @@ def _normalize_provider(raw: str) -> str:
 
 
 def _resolve_config(args: argparse.Namespace) -> tuple[str, str, str, str]:
-    provider = _normalize_provider(str(args.provider or "").strip() or os.getenv("IMAGE_GEN_PROVIDER", "ollama"))
-    model = str(args.model or "").strip() or os.getenv("IMAGE_GEN_MODEL", "x/z-image-turbo")
+    provider = _normalize_provider(
+        _first_non_empty(
+            str(args.provider or "").strip(),
+            os.getenv("IMAGE_GENERATION_PROVIDER", ""),
+            "ollama",
+        )
+    )
+    model = _first_non_empty(
+        str(args.model or "").strip(),
+        os.getenv("IMAGE_GENERATION_MODEL", ""),
+        "x/z-image-turbo",
+    )
 
-    base_url = str(args.base_url or "").strip() or os.getenv("IMAGE_GEN_BASE_URL", "")
-    api_key = str(args.api_key or "").strip() or os.getenv("IMAGE_GEN_API_KEY", "")
+    base_url = _first_non_empty(
+        str(args.base_url or "").strip(),
+        os.getenv("IMAGE_GENERATION_BASE_URL", ""),
+    )
+    api_key = _first_non_empty(
+        str(args.api_key or "").strip(),
+        os.getenv("IMAGE_GENERATION_API_KEY", ""),
+    )
 
     if provider == "ollama":
         if not base_url:
@@ -418,8 +442,16 @@ def main() -> int:
         out = _err(
             prompt=str(args.prompt or ""),
             output_path="",
-            provider_used=str(args.provider or os.getenv("IMAGE_GEN_PROVIDER", "ollama") or "ollama"),
-            model_used=str(args.model or os.getenv("IMAGE_GEN_MODEL", "x/z-image-turbo") or "x/z-image-turbo"),
+            provider_used=_first_non_empty(
+                str(args.provider or "").strip(),
+                os.getenv("IMAGE_GENERATION_PROVIDER", ""),
+                "ollama",
+            ),
+            model_used=_first_non_empty(
+                str(args.model or "").strip(),
+                os.getenv("IMAGE_GENERATION_MODEL", ""),
+                "x/z-image-turbo",
+            ),
             error_code="image_unexpected_exception",
             generation_result=f"unexpected runtime exception: {exc}",
         )

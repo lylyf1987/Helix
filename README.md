@@ -1,111 +1,89 @@
-# Agentic System (Runtime Kernel v1)
+# Agentic System
 
-## What This Repo Is Now
+Terminal-first agentic runtime with:
+- stateful workflow history + summary,
+- strict action contract (`chat_with_requester|keep_reasoning|exec`),
+- runtime exec control with approval modes and cancellation,
+- pluggable model providers (`ollama`, `lmstudio`, `zai`, `deepseek`, `openai_compatible`),
+- built-in skill bootstrapping into workspace.
 
-This repository now implements the new architecture from the updated design/spec docs:
-1. LLM-directed step routing (`next_step`)
-2. Runtime safety kernel (policy + executors + persistence)
-3. Executor-only runtime surface (`Bash`, `PythonExec`)
-4. Skill-driven behavior on top of executors (including web research as a skill pattern)
-
-Primary docs:
-1. `/Users/yangliu/Projects/Business/AgenticSystem/docs/design/system_design.md`
-2. `/Users/yangliu/Projects/Business/AgenticSystem/docs/design/development_plan.md`
-3. `/Users/yangliu/Projects/Business/AgenticSystem/docs/specs/architecture.md`
-4. `/Users/yangliu/Projects/Business/AgenticSystem/docs/specs/schemas.md`
-
-## Repository Layout
+## Current Package Layout
 
 ```text
 agentic_system/
-  kernel/
-    constants.py
-    state.py
-    storage.py
-    skills.py
-    policy.py
-    executors.py
-    memory.py
-    model_router.py
-    prompts.py
-    llm.py
-    validators.py
-    engine.py
-  model_router.py
-  runtime.py
   cli.py
-  skills/
-docs/
-  design/
-  specs/
+  runtime.py
+  kernel/
+    orchestrator.py
+    prompts.py
+    model_router.py
+    executors.py
+    storage.py
+    history_utils.py
+  prompts/
+    agent_system_prompt.json
+    agent_role_description.json
+skills/
 tests/
 ```
 
-## Quick Start
+## Install
 
 ```bash
-python3 -m agentic_system.cli --mode safe --model-provider openai
+python -m pip install -e .
 ```
 
-By default runtime data is stored in:
-- `$AGENTIC_RUNTIME_WORKSPACE` (if set), else
-- `~/.agentic_system/runtime_workspace`
-
-To force a specific runtime workspace:
+## Start Runtime UI
 
 ```bash
-python3 -m agentic_system.cli --workspace /path/to/runtime-workspace
+python -m agentic_system \
+  --workspace /absolute/or/relative/workspace \
+  --provider ollama \
+  --model llama3.1:8b \
+  --mode controlled
 ```
 
-Ollama example:
+### Image skill runtime config
+
+Use canonical names only:
 
 ```bash
-python3 -m agentic_system.cli \
-  --mode safe \
-  --workspace . \
-  --model-provider ollama \
-  --model-name llama3.1:8b
-```
-
-Install editable entrypoint:
-
-```bash
-python3 -m pip install -e .
-agentic-system --mode safe --workspace .
+python -m agentic_system \
+  --workspace ./runtime_workspace \
+  --provider zai \
+  --model glm-5 \
+  --image-analysis-provider ollama \
+  --image-analysis-model llava:latest \
+  --image-generation-provider ollama \
+  --image-generation-model x/z-image-turbo
 ```
 
 ## Runtime Commands
 
 - `/help`
 - `/status`
+- `/status workflow_summary`
+- `/status workflow_hist`
+- `/status full_proc_hist`
+- `/status action_hist`
+- `/status core_agent_prompt`
+- `/refresh`
 - `/exit`
 
-## Execution and Policy
+## Production Notes
 
-1. Runtime executes only `Bash` and `PythonExec`.
-2. Side effects are policy-gated.
-3. CLI approval choices:
-- deny
-- allow-once
-- allow-session
-- allow-pattern
-- allow-always
-
-## Session Persistence
-
-State is written under `<workspace>`:
-1. `sessions/<session_id>/state.json`
-2. `sessions/<session_id>/events.jsonl`
-3. `sessions/<session_id>/full_proc_hist.log`
-4. `sessions/<session_id>/llm_hist.log`
-
-Memory paths:
-1. `memory/short_term/<session_id>/...`
-2. `memory/long_term/docs/...`
-3. `memory/index/...`
+1. Prefer `--mode controlled` for human-in-the-loop execution.
+2. Use `--mode auto` only when workspace write-policy behavior is acceptable for your use case.
+3. Set provider credentials through environment variables (for example `ZAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENAI_COMPAT_API_KEY`).
+4. Keep `skills/` and `prompts/` under version control; runtime bootstraps these into the workspace each session.
 
 ## Tests
 
 ```bash
-python3 -m unittest discover -s tests -p "test_*.py"
+python -m unittest -v tests/test_runtime_kernel.py
 ```
+
+## Migration
+
+Legacy image config names were removed. See:
+- `/Users/yangliu/Projects/Business/AgenticSystem/docs/migrations/2026-02-image-config-rename.md`

@@ -361,171 +361,25 @@ class PromptEngine:
             text = text.replace(self._LATEST_CONTEXT_PLACEHOLDER, "{{LATEST_CONTEXT_VALUE}}")
         return text
 
-    def _compact_workflow_history(
-        self,
-        role: str,
-        state: Any,
-        compact_keep_last_k: int,
-        model_router: Any,
-    ) -> None:
-        head = state.workflow_hist[:-compact_keep_last_k] if compact_keep_last_k < len(state.workflow_hist) else []
-        tail = state.workflow_hist[-compact_keep_last_k:] if compact_keep_last_k > 0 else []
-        workflow_summary = state.workflow_summary if isinstance(state.workflow_summary, str) else ""
-        system_prompt = self._get_system_prompt(role)
-        sections: list[str] = []
-        if system_prompt.strip():
-            sections.append(system_prompt.strip())
-        sections.append(
-            "\n".join(
-                [
-                    "<workflow_summary>",
-                    workflow_summary if workflow_summary else "(empty)",
-                    "</workflow_summary>",
-                    "<workflow_history>",
-                    "\n".join(head) if head else "(empty)",
-                    "</workflow_history>",
-                ]
-            )
-        )
-        final_prompt = "\n\n".join(sections)
-        format_attempts = 0
-        other_attempts = 0
-        while True:
-            parse_error = ""
-            response: Any = {}
-            try:
-                response = model_router.generate(
-                    role="workflow_history_compactor",
-                    final_prompt=final_prompt,
-                )
-                if not isinstance(response, dict):
-                    parse_error = "compactor returned non-object response"
-                elif not bool(response.get("_parse_ok", False)):
-                    parse_error = str(response.get("_parse_error", "")).strip() or "failed to parse compactor output"
-            except Exception as exc:
-                parse_error = f"compactor call failed: {exc}"
-
-            if not parse_error:
-                workflow_hist_compact = str(response.get("workflow_hist_compact", "")).strip()
-                if workflow_hist_compact:
-                    state.workflow_hist = [f"[{state.utc_now_iso()}] workflow_compactor> {workflow_hist_compact}"] + tail
-                    return
-                parse_error = "workflow_hist_compact must be a non-empty string"
-
-            if self._is_missing_output_block_error(parse_error):
-                format_attempts += 1
-                if format_attempts < self._FORMAT_RETRY_LIMIT:
-                    continue
-            else:
-                other_attempts += 1
-                if other_attempts < self._DEFAULT_RETRY_LIMIT:
-                    continue
-
-            print()
-            print(
-                "runtime> workflow_history_compactor failed after retries; "
-                "keeping workflow_history unchanged. "
-                f"last_error={parse_error}"
-            )
-            return
-
-    def _refresh_workflow_summary_if_needed(
-        self,
-        state: Any,
-        model_router: Any,
-    ) -> None:
-        if state is None or model_router is None:
-            return
-        workflow_history: list[str] = getattr(state, "workflow_hist", [])
-        workflow_history_lines = [line for line in workflow_history if line.strip()]
-        workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
-        system_prompt = self._get_system_prompt("workflow_summarizer")
-        sections: list[str] = []
-        if system_prompt.strip():
-            sections.append(system_prompt.strip())
-        sections.append(
-            "\n".join(
-                [
-                    "<workflow_summary>",
-                    workflow_summary if workflow_summary else "(empty)",
-                    "</workflow_summary>",
-                    "<workflow_history>",
-                    "\n".join(workflow_history_lines) if workflow_history_lines else "(empty)",
-                    "</workflow_history>",
-                ]
-            )
-        )
-        final_prompt = "\n\n".join(sections)
-        format_attempts = 0
-        other_attempts = 0
-        while True:
-            parse_error = ""
-            out: Any = {}
-            try:
-                out = model_router.generate(
-                    role="workflow_summarizer",
-                    final_prompt=final_prompt,
-                )
-                if not isinstance(out, dict):
-                    parse_error = "workflow_summarizer returned non-object response"
-                elif not bool(out.get("_parse_ok", False)):
-                    parse_error = str(out.get("_parse_error", "")).strip() or "failed to parse workflow_summarizer output"
-            except Exception as exc:
-                parse_error = f"workflow_summarizer call failed: {exc}"
-
-            if not parse_error:
-                candidate = out.get("workflow_summary")
-                if isinstance(candidate, str):
-                    normalized = candidate.strip()
-                    if normalized:
-                        state.workflow_summary = normalized
-                    return
-                parse_error = "workflow_summary must be a string"
-
-            if self._is_missing_output_block_error(parse_error):
-                format_attempts += 1
-                if format_attempts < self._FORMAT_RETRY_LIMIT:
-                    continue
-            else:
-                other_attempts += 1
-                if other_attempts < self._DEFAULT_RETRY_LIMIT:
-                    continue
-
-            print()
-            print(
-                "runtime> workflow_summarizer failed after retries; "
-                "keeping workflow_summary unchanged. "
-                f"last_error={parse_error}"
-            )
-            return
-
     @staticmethod
-    def _is_missing_output_block_error(parse_error: str) -> bool:
-        text = str(parse_error or "").strip().lower()
-        return (
-            "missing <output>...</output> block" in text
-            or "empty <output> block" in text
-        )
-
-    def build_prompt(
-        self,
-        role: str,
-        state: Any | None = None,
-        model_router: Any | None = None,
-    ) -> str:
-        system_prompt = self._get_system_prompt(role)
-        workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
-        workflow_history: list[str] = getattr(state, "workflow_hist", [])
-        workflow_history_lines = [line for line in workflow_history if line.strip()]
-        sections: list[str] = []
-        if system_prompt.strip():
-            sections.append(system_prompt.strip())
-        latest_context = ""
+    def _extract_latest_context(workflow_history_lines: list[str]) -> str:
         for line in reversed(workflow_history_lines):
             text = str(line).strip()
             if text:
-                latest_context = text
-                break
+                return text
+        return ""
+
+    def _build_core_prompt_text(
+        self,
+        *,
+        system_prompt: str,
+        workflow_summary: str,
+        workflow_history_lines: list[str],
+    ) -> str:
+        latest_context = self._extract_latest_context(workflow_history_lines)
+        sections: list[str] = []
+        if system_prompt.strip():
+            sections.append(system_prompt.strip())
         sections.append(
             "\n".join(
                 [
@@ -545,7 +399,172 @@ class PromptEngine:
             )
         )
         final_prompt = "\n\n".join(sections)
-        final_prompt = final_prompt.replace("{{LATEST_CONTEXT_VALUE}}", latest_context if latest_context else "(empty)")
+        return final_prompt.replace("{{LATEST_CONTEXT_VALUE}}", latest_context if latest_context else "(empty)")
+
+    def _build_observer_prompt_text(
+        self,
+        *,
+        system_prompt: str,
+        workflow_summary: str,
+        workflow_history_text: str,
+    ) -> str:
+        sections: list[str] = []
+        if system_prompt.strip():
+            sections.append(system_prompt.strip())
+        sections.append(
+            "\n".join(
+                [
+                    "<workflow_summary>",
+                    workflow_summary if workflow_summary else "(empty)",
+                    "</workflow_summary>",
+                    "<workflow_history>",
+                    workflow_history_text if workflow_history_text else "(empty)",
+                    "</workflow_history>",
+                ]
+            )
+        )
+        return "\n\n".join(sections)
+
+    def _generate_observer_value_with_retries(
+        self,
+        *,
+        model_router: Any,
+        role: str,
+        final_prompt: str,
+        value_key: str,
+        require_non_empty: bool,
+    ) -> tuple[str | None, str]:
+        format_attempts = 0
+        other_attempts = 0
+        while True:
+            parse_error = ""
+            response: Any = {}
+            try:
+                response = model_router.generate(
+                    role=role,
+                    final_prompt=final_prompt,
+                )
+                if not isinstance(response, dict):
+                    parse_error = f"{role} returned non-object response"
+                elif not bool(response.get("_parse_ok", False)):
+                    parse_error = str(response.get("_parse_error", "")).strip() or f"failed to parse {role} output"
+            except Exception as exc:
+                parse_error = f"{role} call failed: {exc}"
+
+            if not parse_error:
+                candidate = response.get(value_key)
+                if isinstance(candidate, str):
+                    value = candidate.strip()
+                    if not require_non_empty or value:
+                        return value, ""
+                    parse_error = f"{value_key} must be a non-empty string"
+                else:
+                    parse_error = f"{value_key} must be a string"
+
+            if self._is_missing_output_block_error(parse_error):
+                format_attempts += 1
+                if format_attempts < self._FORMAT_RETRY_LIMIT:
+                    continue
+            else:
+                other_attempts += 1
+                if other_attempts < self._DEFAULT_RETRY_LIMIT:
+                    continue
+            return None, parse_error
+
+    def _compact_workflow_history(
+        self,
+        role: str,
+        state: Any,
+        compact_keep_last_k: int,
+        model_router: Any,
+    ) -> None:
+        head = state.workflow_hist[:-compact_keep_last_k] if compact_keep_last_k < len(state.workflow_hist) else []
+        tail = state.workflow_hist[-compact_keep_last_k:] if compact_keep_last_k > 0 else []
+        workflow_summary = state.workflow_summary if isinstance(state.workflow_summary, str) else ""
+        system_prompt = self._get_system_prompt(role)
+        final_prompt = self._build_observer_prompt_text(
+            system_prompt=system_prompt,
+            workflow_summary=workflow_summary,
+            workflow_history_text="\n".join(head) if head else "",
+        )
+        workflow_hist_compact, parse_error = self._generate_observer_value_with_retries(
+            model_router=model_router,
+            role="workflow_history_compactor",
+            final_prompt=final_prompt,
+            value_key="workflow_hist_compact",
+            require_non_empty=True,
+        )
+        if workflow_hist_compact is not None:
+            state.workflow_hist = [f"[{state.utc_now_iso()}] workflow_compactor> {workflow_hist_compact}"] + tail
+            return
+        if parse_error:
+            print()
+            print(
+                "runtime> workflow_history_compactor failed after retries; "
+                "keeping workflow_history unchanged. "
+                f"last_error={parse_error}"
+            )
+        return
+
+    def _refresh_workflow_summary_if_needed(
+        self,
+        state: Any,
+        model_router: Any,
+    ) -> None:
+        if state is None or model_router is None:
+            return
+        workflow_history: list[str] = getattr(state, "workflow_hist", [])
+        workflow_history_lines = [line for line in workflow_history if line.strip()]
+        workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
+        system_prompt = self._get_system_prompt("workflow_summarizer")
+        final_prompt = self._build_observer_prompt_text(
+            system_prompt=system_prompt,
+            workflow_summary=workflow_summary,
+            workflow_history_text="\n".join(workflow_history_lines) if workflow_history_lines else "",
+        )
+        candidate, parse_error = self._generate_observer_value_with_retries(
+            model_router=model_router,
+            role="workflow_summarizer",
+            final_prompt=final_prompt,
+            value_key="workflow_summary",
+            require_non_empty=False,
+        )
+        if candidate is not None:
+            if candidate:
+                state.workflow_summary = candidate
+            return
+        if parse_error:
+            print()
+            print(
+                "runtime> workflow_summarizer failed after retries; "
+                "keeping workflow_summary unchanged. "
+                f"last_error={parse_error}"
+            )
+        return
+
+    @staticmethod
+    def _is_missing_output_block_error(parse_error: str) -> bool:
+        text = str(parse_error or "").strip().lower()
+        return (
+            "missing <output>...</output> block" in text
+            or "empty <output> block" in text
+        )
+
+    def build_prompt(
+        self,
+        role: str,
+        state: Any | None = None,
+        model_router: Any | None = None,
+    ) -> str:
+        system_prompt = self._get_system_prompt(role)
+        workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
+        workflow_history: list[str] = getattr(state, "workflow_hist", [])
+        workflow_history_lines = [line for line in workflow_history if line.strip()]
+        final_prompt = self._build_core_prompt_text(
+            system_prompt=system_prompt,
+            workflow_summary=workflow_summary,
+            workflow_history_lines=workflow_history_lines,
+        )
         estimated_tokens = max(1, len(final_prompt) // 4)
         if (
             role == "core_agent"
@@ -566,34 +585,10 @@ class PromptEngine:
             workflow_summary = str(getattr(state, "workflow_summary", "")).strip()
             workflow_history: list[str] = getattr(state, "workflow_hist", [])
             workflow_history_lines = [line for line in workflow_history if line.strip()]
-            sections: list[str] = []
-            if system_prompt.strip():
-                sections.append(system_prompt.strip())
-            latest_context = ""
-            for line in reversed(workflow_history_lines):
-                text = str(line).strip()
-                if text:
-                    latest_context = text
-                    break
-            sections.append(
-                "\n".join(
-                    [
-                        "Latest Context",
-                        "<latest_context>",
-                        latest_context if latest_context else "(empty)",
-                        "</latest_context>",
-                        "Workflow Summary",
-                        "<workflow_summary>",
-                        workflow_summary if workflow_summary else "(empty)",
-                        "</workflow_summary>",
-                        "Workflow History",
-                        "<workflow_history>",
-                        "\n".join(workflow_history_lines) if workflow_history_lines else "(empty)",
-                        "</workflow_history>",
-                    ]
-                )
+            final_prompt = self._build_core_prompt_text(
+                system_prompt=system_prompt,
+                workflow_summary=workflow_summary,
+                workflow_history_lines=workflow_history_lines,
             )
-            final_prompt = "\n\n".join(sections)
-            final_prompt = final_prompt.replace("{{LATEST_CONTEXT_VALUE}}", latest_context if latest_context else "(empty)")
 
         return final_prompt

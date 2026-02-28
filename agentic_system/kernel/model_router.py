@@ -16,6 +16,18 @@ class ModelResponse:
     text: str
 
 
+@dataclass(frozen=True)
+class OpenAICompatProviderConfig:
+    base_url_env_keys: tuple[str, ...]
+    default_base_url: str
+    api_key_env_keys: tuple[str, ...]
+    timeout_env_keys: tuple[str, ...]
+    core_model_env_key: str
+    thinking_model_env_key: str
+    default_thinking_model: str
+    summarizer_model_env_key: str
+
+
 def _first_env_value(keys: tuple[str, ...], default: str = "") -> str:
     for key in keys:
         value = os.getenv(key, "").strip()
@@ -244,80 +256,111 @@ class OpenAICompatibleAdapter:
 
 
 class ModelRouter:
-    def __init__(self, provider: str = "ollama", model_name: str | None = None) -> None:
+    _PROVIDER_ALIASES: dict[str, str] = {
+        "openai-compatible": "openai_compatible",
+        "openaicompat": "openai_compatible",
+        "z.ai": "zai",
+        "deepseek-ai": "deepseek",
+    }
+
+    _OPENAI_COMPAT_PROVIDER_CONFIGS: dict[str, OpenAICompatProviderConfig] = {
+        "lmstudio": OpenAICompatProviderConfig(
+            base_url_env_keys=("LMSTUDIO_BASE_URL", "OPENAI_COMPAT_BASE_URL"),
+            default_base_url="http://localhost:1234/v1",
+            api_key_env_keys=("LMSTUDIO_API_KEY", "LM_API_TOKEN", "OPENAI_COMPAT_API_KEY"),
+            timeout_env_keys=("LMSTUDIO_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS"),
+            core_model_env_key="LMSTUDIO_MODEL_CORE_AGENT",
+            thinking_model_env_key="LMSTUDIO_MODEL_THINKING",
+            default_thinking_model="local-model",
+            summarizer_model_env_key="LMSTUDIO_MODEL_WORKFLOW_SUMMARIZER",
+        ),
+        "zai": OpenAICompatProviderConfig(
+            base_url_env_keys=("ZAI_BASE_URL", "OPENAI_COMPAT_BASE_URL", "LMSTUDIO_BASE_URL"),
+            default_base_url="https://api.z.ai/api/paas/v4",
+            api_key_env_keys=("ZAI_API_KEY", "OPENAI_COMPAT_API_KEY", "LMSTUDIO_API_KEY", "LM_API_TOKEN"),
+            timeout_env_keys=("ZAI_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS", "LMSTUDIO_TIMEOUT_SECONDS"),
+            core_model_env_key="ZAI_MODEL_CORE_AGENT",
+            thinking_model_env_key="ZAI_MODEL_THINKING",
+            default_thinking_model="glm-5",
+            summarizer_model_env_key="ZAI_MODEL_WORKFLOW_SUMMARIZER",
+        ),
+        "deepseek": OpenAICompatProviderConfig(
+            base_url_env_keys=("DEEPSEEK_BASE_URL", "OPENAI_COMPAT_BASE_URL", "LMSTUDIO_BASE_URL"),
+            default_base_url="https://api.deepseek.com",
+            api_key_env_keys=("DEEPSEEK_API_KEY", "OPENAI_COMPAT_API_KEY", "LMSTUDIO_API_KEY", "LM_API_TOKEN"),
+            timeout_env_keys=("DEEPSEEK_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS", "LMSTUDIO_TIMEOUT_SECONDS"),
+            core_model_env_key="DEEPSEEK_MODEL_CORE_AGENT",
+            thinking_model_env_key="DEEPSEEK_MODEL_THINKING",
+            default_thinking_model="deepseek-chat",
+            summarizer_model_env_key="DEEPSEEK_MODEL_WORKFLOW_SUMMARIZER",
+        ),
+        "openai_compatible": OpenAICompatProviderConfig(
+            base_url_env_keys=("OPENAI_COMPAT_BASE_URL",),
+            default_base_url="http://localhost:1234/v1",
+            api_key_env_keys=("OPENAI_COMPAT_API_KEY", "LM_API_TOKEN"),
+            timeout_env_keys=("OPENAI_COMPAT_TIMEOUT_SECONDS",),
+            core_model_env_key="OPENAI_COMPAT_MODEL_CORE_AGENT",
+            thinking_model_env_key="OPENAI_COMPAT_MODEL_THINKING",
+            default_thinking_model="local-model",
+            summarizer_model_env_key="OPENAI_COMPAT_MODEL_WORKFLOW_SUMMARIZER",
+        ),
+    }
+
+    @classmethod
+    def _normalize_provider_name(cls, provider: str) -> str:
         provider_name = str(provider).strip().lower() or "ollama"
-        if provider_name in {"openai-compatible", "openaicompat"}:
-            provider_name = "openai_compatible"
-        if provider_name == "z.ai":
-            provider_name = "zai"
-        if provider_name == "deepseek-ai":
-            provider_name = "deepseek"
+        return cls._PROVIDER_ALIASES.get(provider_name, provider_name)
+
+    @staticmethod
+    def _resolve_model_selection(
+        *,
+        model_override: str | None,
+        core_model_env_key: str,
+        thinking_model_env_key: str,
+        default_thinking_model: str,
+        summarizer_model_env_key: str,
+    ) -> tuple[str, str]:
+        core_model = model_override or os.getenv(
+            core_model_env_key,
+            os.getenv(thinking_model_env_key, default_thinking_model),
+        )
+        summarizer_model = os.getenv(summarizer_model_env_key, core_model)
+        return core_model, summarizer_model
+
+    def __init__(self, provider: str = "ollama", model_name: str | None = None) -> None:
+        provider_name = self._normalize_provider_name(provider)
         self.provider = provider_name
 
         if provider_name == "ollama":
             self.adapter = OllamaAdapter()
-            core_model = model_name or os.getenv(
-                "OLLAMA_MODEL_CORE_AGENT",
-                os.getenv("OLLAMA_MODEL_THINKING", "llama3.1:8b"),
+            core_model, summarizer_model = self._resolve_model_selection(
+                model_override=model_name,
+                core_model_env_key="OLLAMA_MODEL_CORE_AGENT",
+                thinking_model_env_key="OLLAMA_MODEL_THINKING",
+                default_thinking_model="llama3.1:8b",
+                summarizer_model_env_key="OLLAMA_MODEL_WORKFLOW_SUMMARIZER",
             )
-            summarizer_model = os.getenv("OLLAMA_MODEL_WORKFLOW_SUMMARIZER", core_model)
-        elif provider_name == "lmstudio":
-            self.adapter = OpenAICompatibleAdapter(
-                provider="lmstudio",
-                base_url_env_keys=("LMSTUDIO_BASE_URL", "OPENAI_COMPAT_BASE_URL"),
-                default_base_url="http://localhost:1234/v1",
-                api_key_env_keys=("LMSTUDIO_API_KEY", "LM_API_TOKEN", "OPENAI_COMPAT_API_KEY"),
-                timeout_env_keys=("LMSTUDIO_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS"),
-            )
-            core_model = model_name or os.getenv(
-                "LMSTUDIO_MODEL_CORE_AGENT",
-                os.getenv("LMSTUDIO_MODEL_THINKING", "local-model"),
-            )
-            summarizer_model = os.getenv("LMSTUDIO_MODEL_WORKFLOW_SUMMARIZER", core_model)
-        elif provider_name == "zai":
-            self.adapter = OpenAICompatibleAdapter(
-                provider="zai",
-                base_url_env_keys=("ZAI_BASE_URL", "OPENAI_COMPAT_BASE_URL", "LMSTUDIO_BASE_URL"),
-                default_base_url="https://api.z.ai/api/paas/v4",
-                api_key_env_keys=("ZAI_API_KEY", "OPENAI_COMPAT_API_KEY", "LMSTUDIO_API_KEY", "LM_API_TOKEN"),
-                timeout_env_keys=("ZAI_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS", "LMSTUDIO_TIMEOUT_SECONDS"),
-            )
-            core_model = model_name or os.getenv(
-                "ZAI_MODEL_CORE_AGENT",
-                os.getenv("ZAI_MODEL_THINKING", "glm-5"),
-            )
-            summarizer_model = os.getenv("ZAI_MODEL_WORKFLOW_SUMMARIZER", core_model)
-        elif provider_name == "deepseek":
-            self.adapter = OpenAICompatibleAdapter(
-                provider="deepseek",
-                base_url_env_keys=("DEEPSEEK_BASE_URL", "OPENAI_COMPAT_BASE_URL", "LMSTUDIO_BASE_URL"),
-                default_base_url="https://api.deepseek.com",
-                api_key_env_keys=("DEEPSEEK_API_KEY", "OPENAI_COMPAT_API_KEY", "LMSTUDIO_API_KEY", "LM_API_TOKEN"),
-                timeout_env_keys=("DEEPSEEK_TIMEOUT_SECONDS", "OPENAI_COMPAT_TIMEOUT_SECONDS", "LMSTUDIO_TIMEOUT_SECONDS"),
-            )
-            core_model = model_name or os.getenv(
-                "DEEPSEEK_MODEL_CORE_AGENT",
-                os.getenv("DEEPSEEK_MODEL_THINKING", "deepseek-chat"),
-            )
-            summarizer_model = os.getenv("DEEPSEEK_MODEL_WORKFLOW_SUMMARIZER", core_model)
-        elif provider_name == "openai_compatible":
-            self.adapter = OpenAICompatibleAdapter(
-                provider="openai_compatible",
-                base_url_env_keys=("OPENAI_COMPAT_BASE_URL",),
-                default_base_url="http://localhost:1234/v1",
-                api_key_env_keys=("OPENAI_COMPAT_API_KEY", "LM_API_TOKEN"),
-                timeout_env_keys=("OPENAI_COMPAT_TIMEOUT_SECONDS",),
-            )
-            core_model = model_name or os.getenv(
-                "OPENAI_COMPAT_MODEL_CORE_AGENT",
-                os.getenv("OPENAI_COMPAT_MODEL_THINKING", "local-model"),
-            )
-            summarizer_model = os.getenv("OPENAI_COMPAT_MODEL_WORKFLOW_SUMMARIZER", core_model)
         else:
-            raise NotImplementedError(
-                "Provider "
-                f"'{provider_name}' is not implemented yet. "
-                "Use --provider ollama, lmstudio, zai, deepseek, or openai_compatible."
+            config = self._OPENAI_COMPAT_PROVIDER_CONFIGS.get(provider_name)
+            if config is None:
+                raise NotImplementedError(
+                    "Provider "
+                    f"'{provider_name}' is not implemented yet. "
+                    "Use --provider ollama, lmstudio, zai, deepseek, or openai_compatible."
+                )
+            self.adapter = OpenAICompatibleAdapter(
+                provider=provider_name,
+                base_url_env_keys=config.base_url_env_keys,
+                default_base_url=config.default_base_url,
+                api_key_env_keys=config.api_key_env_keys,
+                timeout_env_keys=config.timeout_env_keys,
+            )
+            core_model, summarizer_model = self._resolve_model_selection(
+                model_override=model_name,
+                core_model_env_key=config.core_model_env_key,
+                thinking_model_env_key=config.thinking_model_env_key,
+                default_thinking_model=config.default_thinking_model,
+                summarizer_model_env_key=config.summarizer_model_env_key,
             )
         self.models: dict[str, str] = {
             "core_agent": core_model,

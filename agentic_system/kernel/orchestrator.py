@@ -12,6 +12,18 @@ from typing import Any, Callable
 from uuid import uuid4
 
 from .executors import ExecJob, collect_exec_job_result, start_exec_job, terminate_exec_job
+from .history_utils import (
+    build_exec_exact_signature,
+    build_exec_path_signature,
+    build_exec_pattern_signature,
+    build_exec_result_lines,
+    format_core_agent_record,
+    format_exec_value_lines,
+    format_history_block,
+    format_history_record,
+    format_ui_block,
+    normalize_script_args,
+)
 from .model_router import ModelRouter
 from .prompts import PromptEngine
 from .storage import StorageEngine
@@ -65,47 +77,16 @@ class FlowEngine:
 
     @staticmethod
     def _normalize_script_args(raw_script_args: Any) -> list[str]:
-        if isinstance(raw_script_args, (list, tuple)):
-            return [str(arg).strip() for arg in raw_script_args if str(arg).strip()]
-        if isinstance(raw_script_args, str):
-            text = raw_script_args.strip()
-            if not text:
-                return []
-            try:
-                return [arg for arg in shlex.split(text) if arg.strip()]
-            except ValueError:
-                return [text]
-        return []
+        return normalize_script_args(raw_script_args)
 
     def _build_exec_exact_signature(self, action_input: dict[str, Any]) -> str:
-        code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
-        script_path = str(action_input.get("script_path", "")).strip()
-        script = str(action_input.get("script", "")).strip()
-        script_args = self._normalize_script_args(action_input.get("script_args", []))
-        normalized = {
-            "action": "exec",
-            "code_type": code_type,
-            "script_path": script_path,
-            "script": script,
-            "script_args": script_args,
-        }
-        return json.dumps(normalized, ensure_ascii=True, sort_keys=True)
+        return build_exec_exact_signature(action_input)
 
     def _build_exec_pattern_signature(self, action_input: dict[str, Any]) -> str:
-        code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
-        script_path = str(action_input.get("script_path", "")).strip()
-        script = str(action_input.get("script", "")).strip()
-        if script_path:
-            return f"exec|{code_type}|script_path|{script_path}"
-        compact_inline = " ".join(script.split())[:240]
-        return f"exec|{code_type}|inline|{compact_inline}"
+        return build_exec_pattern_signature(action_input)
 
     def _build_exec_path_signature(self, action_input: dict[str, Any]) -> str:
-        code_type = str(action_input.get("code_type", "bash")).strip().lower() or "bash"
-        script_path = str(action_input.get("script_path", "")).strip()
-        if not script_path:
-            return ""
-        return f"exec|{code_type}|script_path|{script_path}"
+        return build_exec_path_signature(action_input)
 
     def _is_auto_mode(self) -> bool:
         return str(self.mode).strip().lower() == "auto"
@@ -197,22 +178,7 @@ class FlowEngine:
 
     @staticmethod
     def _format_exec_value_lines(label: str, value: Any) -> list[str]:
-        lines = [f"  - {label}:"]
-        raw_text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=True)
-        text = str(raw_text)
-        if not text:
-            return lines
-        stripped = text.strip()
-        if stripped:
-            try:
-                parsed = json.loads(stripped)
-            except Exception:
-                parsed = None
-            if isinstance(parsed, (dict, list)):
-                text = json.dumps(parsed, ensure_ascii=True, indent=2)
-        for row in str(text).splitlines():
-            lines.append(f"    {row}")
-        return lines
+        return format_exec_value_lines(label, value)
 
     @staticmethod
     def _format_history_block(
@@ -221,49 +187,19 @@ class FlowEngine:
         first_line: str,
         continuation_lines: list[str],
     ) -> str:
-        role_name = str(role or "").strip() or "runtime"
-        prefix = f"[{state.utc_now_iso()}] {role_name}> "
-        lines = [f"{prefix}{first_line}"]
-        for row in continuation_lines:
-            lines.append(f"{row}")
-        return "\n".join(lines)
+        return format_history_block(
+            state=state,
+            role=role,
+            first_line=first_line,
+            continuation_lines=continuation_lines,
+        )
 
     @staticmethod
     def _format_ui_block(role: str, first_line: str, continuation_lines: list[str]) -> str:
-        role_name = str(role or "").strip() or "runtime"
-        prefix = f"{role_name}> "
-        lines = [f"{prefix}{first_line}"]
-        for row in continuation_lines:
-            lines.append(f"{row}")
-        return "\n".join(lines)
+        return format_ui_block(role=role, first_line=first_line, continuation_lines=continuation_lines)
 
     def _build_exec_result_lines(self, exec_result: Any) -> list[str]:
-        if not isinstance(exec_result, dict):
-            lines: list[str] = []
-            lines.append("job \"none\" with id unknown failed with the stdout and stderr below")
-            lines.extend(self._format_exec_value_lines("stdout", ""))
-            lines.extend(self._format_exec_value_lines("stderr", str(exec_result)))
-            return lines
-        lines = []
-        job_name = str(exec_result.get("job_name", "")).strip() or "none"
-        job_id = str(exec_result.get("job_id", "")).strip()
-        status = str(exec_result.get("status", "")).strip()
-        display_job_id = job_id[4:] if job_id.startswith("job_") else (job_id or "unknown")
-        status_text = "finished"
-        if status == "completed":
-            status_text = "completed successfully"
-        elif status == "failed":
-            status_text = "failed"
-        elif status == "cancelled":
-            status_text = "was cancelled"
-        elif status:
-            status_text = status
-        lines.append(
-            f"job \"{job_name}\" with id {display_job_id} {status_text} with the stdout and stderr below"
-        )
-        lines.extend(self._format_exec_value_lines("stdout", exec_result.get("stdout", "")))
-        lines.extend(self._format_exec_value_lines("stderr", exec_result.get("stderr", "")))
-        return lines
+        return build_exec_result_lines(exec_result)
 
     def _record_exec_result(self, state: StorageEngine, exec_result: dict[str, Any]) -> None:
         exec_lines = self._build_exec_result_lines(exec_result)
@@ -291,8 +227,7 @@ class FlowEngine:
 
     @staticmethod
     def _format_history_record(state: StorageEngine, role: str, text: str) -> str:
-        role_name = str(role or "").strip() or "runtime"
-        return f"[{state.utc_now_iso()}] {role_name}> {str(text or '')}"
+        return format_history_record(state=state, role=role, text=text)
 
     @staticmethod
     def _format_core_agent_record(
@@ -301,25 +236,12 @@ class FlowEngine:
         action: str,
         action_input: Any,
     ) -> str:
-        action_name = str(action or "").strip().lower() or "unknown"
-        payload = dict(action_input) if isinstance(action_input, dict) else {}
-        prefix = f"[{state.utc_now_iso()}] core_agent> "
-        lines: list[str] = [
-            f"{prefix}{str(raw_response)}",
-            f"  - next_action: {action_name}",
-        ]
-        if payload:
-            lines.append(f"  - action_input:")
-            for key, value in payload.items():
-                if isinstance(value, str) and "\n" in value:
-                    lines.append(f"    - {key}:")
-                    for sub_line in value.splitlines():
-                        lines.append(f"      {sub_line}")
-                    continue
-                lines.append(f"    - {key}: {json.dumps(value, ensure_ascii=True)}")
-        else:
-            lines.append(f"  - action_input: {{}}")
-        return "\n".join(lines)
+        return format_core_agent_record(
+            state=state,
+            raw_response=raw_response,
+            action=action,
+            action_input=action_input,
+        )
 
     def _build_exec_approval_prompt(
         self,
@@ -613,6 +535,29 @@ class FlowEngine:
         action_input = dict(action_input_raw) if isinstance(action_input_raw, dict) else {}
         return raw_response, action, action_input
 
+    @staticmethod
+    def _is_transient_model_error(text: str) -> bool:
+        payload = str(text or "").strip().lower()
+        if not payload:
+            return False
+        transient_markers = (
+            "http 429",
+            "http 500",
+            "http 502",
+            "http 503",
+            "http 504",
+            "service unavailable",
+            "temporarily overloaded",
+            "network error",
+            "timed out",
+            "timeout",
+        )
+        return any(marker in payload for marker in transient_markers)
+
+    @staticmethod
+    def _retry_delay_seconds_for_attempt(attempt_index: int) -> int:
+        return min(8, max(1, 2**max(0, attempt_index)))
+
     def _build_stream_printer(self) -> tuple[Callable[[str], None], Callable[[], None]]:
         def on_token(token: str) -> None:
             if not token:
@@ -632,7 +577,8 @@ class FlowEngine:
         prompt_engine: PromptEngine,
     ) -> tuple[str, dict[str, Any], bool]:
         max_invalid_output_retries = int(self.limits.get("max_invalid_output_retries", 3))
-        for _ in range(max_invalid_output_retries):
+        last_failure_kind = "invalid_output"
+        for attempt_idx in range(max_invalid_output_retries):
             self._ensure_runtime_fields(state)
             final_prompt = prompt_engine.build_prompt(
                 role="core_agent",
@@ -643,14 +589,56 @@ class FlowEngine:
             print()
             print("core_agent> ", end="", flush=True)
             on_chunk, finish_stream = self._build_stream_printer()
-            response = model_router.generate(
-                role="core_agent",
-                final_prompt=final_prompt,
-                raw_response_callback=on_chunk,
-            )
+            response: Any = {}
+            call_error: Exception | None = None
+            try:
+                response = model_router.generate(
+                    role="core_agent",
+                    final_prompt=final_prompt,
+                    raw_response_callback=on_chunk,
+                )
+            except Exception as exc:
+                call_error = exc
             finish_stream()
+            if call_error is not None:
+                last_failure_kind = "model_call"
+                error_text = str(call_error).strip() or repr(call_error)
+                retryable = self._is_transient_model_error(error_text)
+                should_retry = attempt_idx < (max_invalid_output_retries - 1)
+                if should_retry and retryable:
+                    delay_seconds = self._retry_delay_seconds_for_attempt(attempt_idx)
+                    runtime_note = (
+                        f"core_agent model call failed: {error_text}. "
+                        f"Retrying in {delay_seconds}s "
+                        f"({attempt_idx + 1}/{max_invalid_output_retries})."
+                    )
+                elif should_retry:
+                    delay_seconds = 0
+                    runtime_note = (
+                        f"core_agent model call failed: {error_text}. "
+                        f"Retrying ({attempt_idx + 1}/{max_invalid_output_retries})."
+                    )
+                else:
+                    delay_seconds = 0
+                    runtime_note = f"core_agent model call failed: {error_text}."
+                state.update_state(
+                    text=self._format_history_record(
+                        state=state,
+                        role="runtime",
+                        text=runtime_note,
+                    ),
+                )
+                print()
+                print(f"runtime> {runtime_note}")
+                state.save_state()
+                if should_retry:
+                    if delay_seconds > 0:
+                        time.sleep(delay_seconds)
+                    continue
+                break
             parse_ok = bool(response.get("_parse_ok", False)) if isinstance(response, dict) else False
             if not parse_ok:
+                last_failure_kind = "invalid_output"
                 parse_error = str(response.get("_parse_error", "")).strip() if isinstance(response, dict) else ""
                 state.update_state(
                     text=self._format_history_record(
@@ -688,9 +676,14 @@ class FlowEngine:
             state.save_state()
             return action, action_input, True
 
-        stop_reason = (
-            f"max invalid output retries reached ({max_invalid_output_retries}); ending current loop"
-        )
+        if last_failure_kind == "model_call":
+            stop_reason = (
+                f"max core_agent model call retries reached ({max_invalid_output_retries}); ending current loop"
+            )
+        else:
+            stop_reason = (
+                f"max invalid output retries reached ({max_invalid_output_retries}); ending current loop"
+            )
         state.update_state(
             text=self._format_history_record(
                 state=state,
@@ -916,54 +909,27 @@ class FlowEngine:
             print(f"runtime> max turns reached ({max_turns}); ending current loop")
             state.save_state()
 
-    def run_session(
+    def process_user_message(
         self,
+        *,
         state: StorageEngine,
-        command_handler: Callable[[str], str] | None = None,
-    ) -> str:
+        user_text: str,
+    ) -> None:
         model_router = self.model_router
         prompt_engine = self.prompt_engine
         if model_router is None or prompt_engine is None:
             raise RuntimeError("FlowEngine requires model_router and prompt_engine to run")
 
-        first_user_prompt = True
-        while True:
-            if not first_user_prompt:
-                print()
-            try:
-                line = input("user> ")
-            except EOFError:
-                print()
-                break
-            except KeyboardInterrupt:
-                print("\nInterrupted. Use /exit to quit.")
-                continue
-            first_user_prompt = False
+        stripped = str(user_text).strip()
+        if not stripped:
+            raise ValueError("user_text must be non-empty")
 
-            stripped = line.strip()
-            if not stripped:
-                print("No input provided.")
-                continue
-
-            if command_handler is not None and stripped.startswith("/"):
-                command_out = command_handler(stripped)
-                if command_out == "__EXIT__":
-                    return "__EXIT__"
-                if command_out == "__REFRESH__":
-                    return "__REFRESH__"
-                if command_out:
-                    print(command_out)
-                continue
-
-            state.update_state(
-                text=self._format_history_record(
-                    state=state,
-                    role="user",
-                    text=stripped,
-                ),
-            )
-            state.save_state()
-            self._run_core_agent_loop(
-                state,
-            )
-        return "__EXIT__"
+        state.update_state(
+            text=self._format_history_record(
+                state=state,
+                role="user",
+                text=stripped,
+            ),
+        )
+        state.save_state()
+        self._run_core_agent_loop(state)

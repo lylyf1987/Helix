@@ -1,7 +1,7 @@
 ---
 name: Skill Creation
 handler: scripts/skill_creation.py
-description: Create and improve skills with script-first scaffolding, validation, and structured runtime evidence.
+description: Create and improve skills with script-first scaffolding, validation, workflow alignment, and structured runtime evidence.
 required_tools: exec
 recommended_tools: exec
 forbidden_tools:
@@ -17,12 +17,45 @@ For uncertain skill tasks, run the helper script immediately so runtime history 
 
 # Creation Lifecycle (Recommended)
 
-1. `inspect` target skill status and existing structure.
-2. `scaffold` baseline package if missing or outdated.
-3. Fill `SKILL.md` with concise procedure and trigger conditions.
-4. Implement handler script(s) with explicit runtime logging behavior.
-5. `validate` before first use to catch structure/frontmatter/handler issues.
-6. Iterate from runtime stderr evidence.
+1. `inspect` current skill status and existing structure.
+2. `scaffold` baseline package with explicit `script_mode`.
+3. Fill `SKILL.md` with concrete workflow-aligned procedure.
+4. Implement/adjust script(s) only where needed.
+5. `validate` before first use to catch structure/frontmatter/handler/content issues.
+6. Iterate from runtime stderr and validation warnings.
+
+# Skill Specification Standard
+
+Generated `SKILL.md` must include these sections:
+
+- `# Purpose`
+- `# When To Use`
+- `# Skill Mode`
+- `# Procedure`
+- `# Runtime Contract`
+- `# Action Input Templates`
+- `# Output JSON Shape`
+- `# Error Handling Rule`
+- `# Skill Dependencies`
+- `# Notes`
+
+Procedure should reflect design workflow:
+
+- gather context -> plan -> act -> verify -> iterate/report
+
+# Script Modes
+
+`--script-mode` supports:
+
+- `none`: no dedicated script is required.
+- `single`: one primary script (`handler`) is expected.
+- `multi`: multiple phase scripts are expected; LLM reasons between phase executions.
+
+# Dependency By Reference
+
+For new skills, prefer referencing existing skills by `skill_id` in `SKILL.md` instead of duplicating their logic.
+
+Example: planning skill can reference `search-online-context` for research phases.
 
 # Runtime Log Contract
 
@@ -33,14 +66,16 @@ For uncertain skill tasks, run the helper script immediately so runtime history 
 # Helper Script
 
 - Path: `skills/all-agents/skill-creation/scripts/skill_creation.py`
-- Supports two actions:
+- Actions:
   1. `inspect`: inspect existing skill package status.
-  2. `scaffold`: create/update a full skill skeleton (`SKILL.md`, handler script, references/assets dirs).
-  3. `validate`: validate skill package quality gates (frontmatter, handler path, runtime logging guidance).
+  2. `scaffold`: create/update skill skeleton and section-compliant `SKILL.md`.
+  3. `validate`: validate quality gates (frontmatter, script mode, required sections, workflow terms, runtime-log guidance).
 
 # Preferred Action Input Template
 
-Use `code_type=python` with `script_path` and `script_args` array:
+Use `code_type=python` with `script_path` and `script_args` array.
+
+Inspect example:
 
 ```json
 {
@@ -54,7 +89,7 @@ Use `code_type=python` with `script_path` and `script_args` array:
 }
 ```
 
-Scaffold example:
+Scaffold single-script example:
 
 ```json
 {
@@ -64,7 +99,42 @@ Scaffold example:
     "--action", "scaffold",
     "--skill-id", "new-skill-id",
     "--scope", "all-agents",
+    "--script-mode", "single",
     "--description", "One-line purpose of this skill"
+  ]
+}
+```
+
+Scaffold no-script example:
+
+```json
+{
+  "code_type": "python",
+  "script_path": "skills/all-agents/skill-creation/scripts/skill_creation.py",
+  "script_args": [
+    "--action", "scaffold",
+    "--skill-id", "reasoning-only-skill",
+    "--scope", "all-agents",
+    "--script-mode", "none",
+    "--description", "Procedure-first skill without dedicated handler script"
+  ]
+}
+```
+
+Scaffold multi-script with dependencies example:
+
+```json
+{
+  "code_type": "python",
+  "script_path": "skills/all-agents/skill-creation/scripts/skill_creation.py",
+  "script_args": [
+    "--action", "scaffold",
+    "--skill-id", "planning-with-files-lite",
+    "--scope", "all-agents",
+    "--script-mode", "multi",
+    "--dependency-skill", "search-online-context",
+    "--dependency-skill", "documentation-distillation",
+    "--description", "Planning skill using phase-based scripts and dependency skills"
   ]
 }
 ```
