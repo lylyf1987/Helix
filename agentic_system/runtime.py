@@ -5,17 +5,60 @@ from __future__ import annotations
 import os
 import shutil
 
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 
 from .kernel import (
     FlowEngine,
+    ModelRouter,
     PromptEngine,
+    SearxngManager,
     StorageEngine,
+    prompt_auto_write_override,
+    prompt_exec_approval,
 )
-from .kernel.model_router import ModelRouter
+
+
+@dataclass(frozen=True)
+class RuntimeConfig:
+    """Normalized runtime options from CLI inputs."""
+
+    provider: str
+    mode: str
+    model_name: str | None
+    image_analysis_provider: str
+    image_analysis_model: str
+    image_generation_provider: str
+    image_generation_model: str
+
+    @classmethod
+    def from_inputs(
+        cls,
+        *,
+        provider: str,
+        mode: str,
+        model_name: str | None,
+        image_analysis_provider: str | None,
+        image_analysis_model: str | None,
+        image_generation_provider: str | None,
+        image_generation_model: str | None,
+    ) -> RuntimeConfig:
+        def _norm(value: str | None) -> str:
+            return str(value).strip() if value is not None else ""
+
+        return cls(
+            provider=_norm(provider).lower() or "ollama",
+            mode=_norm(mode).lower() or "controlled",
+            model_name=model_name,
+            image_analysis_provider=_norm(image_analysis_provider) or "none",
+            image_analysis_model=_norm(image_analysis_model) or "none",
+            image_generation_provider=_norm(image_generation_provider) or "none",
+            image_generation_model=_norm(image_generation_model) or "none",
+        )
 
 
 class AgentRuntime:
@@ -23,6 +66,9 @@ class AgentRuntime:
 
     _CMD_EXIT = "__EXIT__"
     _CMD_REFRESH = "__REFRESH__"
+    _DEFAULT_SEARXNG_BASE_URL = "http://127.0.0.1:8888"
+    _PROMPT_CONTINUATION = "... "
+    _TOKEN_WINDOW_LIMIT = 70000
     _HELP_TEXT = "\n".join(
         [
             "Commands:",
@@ -55,81 +101,73 @@ class AgentRuntime:
         self.packaged_prompts_root = Path(__file__).resolve().parent / "prompts"
         self.packaged_skills_root = Path(__file__).resolve().parent.parent / "skills"
 
-        self.provider = str(provider).strip().lower() or "ollama"
-        self.mode = str(mode).strip().lower() or "controlled"
-        self.image_analysis_provider = self._normalized_optional_text(image_analysis_provider) or "none"
-        self.image_analysis_model = self._normalized_optional_text(image_analysis_model) or "none"
-        self.image_generation_provider = self._normalized_optional_text(image_generation_provider) or "none"
-        self.image_generation_model = self._normalized_optional_text(image_generation_model) or "none"
+        self.config = RuntimeConfig.from_inputs(
+            provider=provider,
+            mode=mode,
+            model_name=model_name,
+            image_analysis_provider=image_analysis_provider,
+            image_analysis_model=image_analysis_model,
+            image_generation_provider=image_generation_provider,
+            image_generation_model=image_generation_model,
+        )
+        # Backward-compatible direct attributes used by status output and tests.
+        self.provider = self.config.provider
+        self.mode = self.config.mode
+        self.image_analysis_provider = self.config.image_analysis_provider
+        self.image_analysis_model = self.config.image_analysis_model
+        self.image_generation_provider = self.config.image_generation_provider
+        self.image_generation_model = self.config.image_generation_model
 
-        self._multiline_input_enabled = False
-        self._prompt_session: Any | None = None
-        self._initialize_input_mode()
+        self._prompt_session = self._build_prompt_session()
+        self._command_handlers: dict[str, Callable[[str], str]] = {
+            "/help": self._cmd_help,
+            "/status": self._cmd_status,
+            "/refresh": self._cmd_refresh,
+            "/exit": self._cmd_exit,
+        }
+
         self._configure_skill_provider_environment()
-        self._initialize_kernel(session_id=session_id, model_name=model_name)
+        self._searxng = SearxngManager(workspace=self.workspace)
+        self._initialize_kernel(session_id=session_id)
         self._persist()
 
-    @staticmethod
-    def _normalized_optional_text(value: str | None) -> str:
-        return str(value).strip() if value is not None else ""
+    def _build_prompt_session(self) -> PromptSession:
+        """Create multiline prompt-toolkit session (Ctrl+D submits)."""
+        bindings = KeyBindings()
 
-    def _initialize_kernel(self, *, session_id: str | None, model_name: str | None) -> None:
+        @bindings.add("c-d")
+        def _submit(event: Any) -> None:
+            event.app.exit(result=event.app.current_buffer.text)
+
+        return PromptSession(key_bindings=bindings)
+
+    def _initialize_kernel(self, *, session_id: str | None) -> None:
         """Initialize storage, model routing, prompting, and orchestration engines."""
         self.state = StorageEngine(workspace=self.workspace, session_id=session_id)
         if session_id is not None:
             self.state.load_state()
-        self.model_router = ModelRouter(provider=self.provider, model_name=model_name)
+        self.model_router = ModelRouter(provider=self.config.provider, model_name=self.config.model_name)
         self.prompt_engine = PromptEngine(
             workspace=self.workspace,
-            token_window_limit=70000,
+            token_window_limit=self._TOKEN_WINDOW_LIMIT,
             compact_keep_last_k=10,
         )
         self.engine = FlowEngine(
             workspace=self.workspace,
-            mode=self.mode,
+            mode=self.config.mode,
             model_router=self.model_router,
             prompt_engine=self.prompt_engine,
-            approval_handler=self._default_approval_prompt,
-            write_policy_handler=self._auto_write_override_prompt,
+            approval_handler=prompt_exec_approval,
+            write_policy_handler=prompt_auto_write_override,
         )
 
     def _configure_skill_provider_environment(self) -> None:
         """Expose image skill provider/model choices via environment variables."""
-        os.environ["IMAGE_ANALYSIS_PROVIDER"] = self.image_analysis_provider
-        os.environ["IMAGE_ANALYSIS_MODEL"] = self.image_analysis_model
-        os.environ["IMAGE_GENERATION_PROVIDER"] = self.image_generation_provider
-        os.environ["IMAGE_GENERATION_MODEL"] = self.image_generation_model
-
-    def _initialize_input_mode(self) -> None:
-        """Enable multiline prompt-toolkit input with Ctrl+D submit."""
-        try:
-            bindings = KeyBindings()
-
-            @bindings.add("c-d")
-            def _submit(event: Any) -> None:
-                event.app.exit(result=event.app.current_buffer.text)
-
-            self._prompt_session = PromptSession(key_bindings=bindings)
-            self._multiline_input_enabled = True
-        except Exception:
-            self._multiline_input_enabled = False
-            self._prompt_session = None
-
-    @staticmethod
-    def _continuation_prompt(_width: int, _line_number: int, _is_soft_wrap: bool) -> str:
-        return "... "
-
-    def _read_user_input(self, prompt: str) -> str:
-        """Read one user message using prompt-toolkit when available."""
-        if not self._multiline_input_enabled or self._prompt_session is None:
-            return input(prompt)
-        return str(
-            self._prompt_session.prompt(
-                prompt,
-                multiline=True,
-                prompt_continuation=self._continuation_prompt,
-            )
-        )
+        os.environ["IMAGE_ANALYSIS_PROVIDER"] = self.config.image_analysis_provider
+        os.environ["IMAGE_ANALYSIS_MODEL"] = self.config.image_analysis_model
+        os.environ["IMAGE_GENERATION_PROVIDER"] = self.config.image_generation_provider
+        os.environ["IMAGE_GENERATION_MODEL"] = self.config.image_generation_model
+        os.environ.setdefault("SEARXNG_BASE_URL", self._DEFAULT_SEARXNG_BASE_URL)
 
     def _bootstrap_runtime_assets(self) -> None:
         """Sync packaged prompts/skills into the runtime workspace."""
@@ -164,52 +202,6 @@ class AgentRuntime:
                     else:
                         target_dir.unlink()
                 shutil.copytree(skill_dir, target_dir)
-
-    @staticmethod
-    def _default_approval_prompt(signature: str) -> tuple[bool, str]:
-        """Prompt requester for execution approval scope in controlled mode."""
-        print()
-        print("Runtime confirmation required for exec action.")
-        print(signature)
-        print("Approve this execution? [y/N/s/p/k]")
-        print("  y: allow once")
-        print("  s: allow same exact exec for this session")
-        print("  p: allow same script/pattern for this session")
-        print("  k: allow same script_path for this session (ignore args)")
-        choice = input("> ").strip().lower()
-        if choice in {"y", "yes", "once"}:
-            return True, "once"
-        if choice in {"s", "session", "exact"}:
-            return True, "session"
-        if choice in {"p", "pattern"}:
-            return True, "pattern"
-        if choice in {"k", "path", "skill"}:
-            return True, "path"
-        return False, "deny"
-
-    @staticmethod
-    def _auto_write_override_prompt(note: str, suggested_paths: list[str]) -> str | None:
-        """Ask requester for one-off external write override in auto mode."""
-        print()
-        print("Runtime auto-mode write policy blocked external write.")
-        if note.strip():
-            print(note.strip())
-        if suggested_paths:
-            print("Suggested external paths (from command context):")
-            for idx, item in enumerate(suggested_paths, start=1):
-                print(f"  {idx}. {item}")
-        print("Allow one external writable path for this session? [y/N]")
-        choice = input("> ").strip().lower()
-        if choice not in {"y", "yes"}:
-            return None
-        default_path = suggested_paths[0] if suggested_paths else ""
-        if default_path:
-            print(f"Enter writable path (blank uses default: {default_path})")
-            entered = input("> ").strip()
-            return entered or default_path
-        print("Enter writable path (absolute or ~/...):")
-        entered = input("> ").strip()
-        return entered or None
 
     @staticmethod
     def _render_status_value(value: Any) -> str:
@@ -261,29 +253,42 @@ class AgentRuntime:
             )
         return self._render_status_value(status_values[normalized_target])
 
+    def _cmd_help(self, _arg: str) -> str:
+        return self._HELP_TEXT
+
+    def _cmd_status(self, arg: str) -> str:
+        return self._status_text(arg)
+
+    def _cmd_refresh(self, _arg: str) -> str:
+        return self._CMD_REFRESH
+
+    def _cmd_exit(self, _arg: str) -> str:
+        return self._CMD_EXIT
+
     def _handle_command(self, command_line: str) -> str:
         """Process built-in slash commands and return printable output token/text."""
         parts = command_line.split(maxsplit=1)
         cmd = parts[0].lower()
-        if cmd == "/help":
-            return self._HELP_TEXT
-        if cmd == "/refresh":
-            return self._CMD_REFRESH
-        if cmd == "/exit":
-            return self._CMD_EXIT
-        if cmd == "/status":
-            target = parts[1] if len(parts) > 1 else ""
-            return self._status_text(target)
-        return f"Unknown command: {cmd}. Use /help."
+        arg = parts[1] if len(parts) > 1 else ""
+        handler = self._command_handlers.get(cmd)
+        if handler is None:
+            return f"Unknown command: {cmd}. Use /help."
+        return handler(arg)
+
+    def _refresh_session(self) -> None:
+        """Start a fresh session while keeping workspace/runtime config."""
+        self._persist()
+        self.state = StorageEngine(workspace=self.workspace, session_id=None)
+        print(f"Session refreshed. New session_id={self.state.session_id}")
 
     def start(self, show_banner: bool = True) -> int:
         """Run interactive REPL until requester exits or EOF occurs."""
         self._bootstrap_runtime_assets()
+        self._searxng.ensure_backend()
         if show_banner:
             print(f"Session {self.state.session_id} started in provider={self.provider}, mode={self.mode}")
             print("Type /help for commands. Type /exit to quit.")
-            if self._multiline_input_enabled:
-                print("Multiline input enabled: Enter adds new lines, Ctrl+D submits, Ctrl+C cancels current input.")
+            print("Multiline input enabled: Enter adds new lines, Ctrl+D submits, Ctrl+C cancels current input.")
 
         try:
             first_user_prompt = True
@@ -291,7 +296,13 @@ class AgentRuntime:
                 if not first_user_prompt:
                     print()
                 try:
-                    line = self._read_user_input("user> ")
+                    line = str(
+                        self._prompt_session.prompt(
+                            "user> ",
+                            multiline=True,
+                            prompt_continuation=lambda _w, _n, _s: self._PROMPT_CONTINUATION,
+                        )
+                    )
                 except EOFError:
                     print()
                     break
@@ -310,9 +321,7 @@ class AgentRuntime:
                     if command_out == self._CMD_EXIT:
                         break
                     if command_out == self._CMD_REFRESH:
-                        self._persist()
-                        self.state = StorageEngine(workspace=self.workspace, session_id=None)
-                        print(f"Session refreshed. New session_id={self.state.session_id}")
+                        self._refresh_session()
                         continue
                     if command_out:
                         print(command_out)
@@ -328,6 +337,7 @@ class AgentRuntime:
 
     def shutdown(self) -> None:
         """Persist runtime state before process exit."""
+        self._searxng.shutdown()
         self._persist()
 
     def _persist(self) -> None:
