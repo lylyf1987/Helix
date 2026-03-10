@@ -1,24 +1,26 @@
 # Agentic System
 
-RL-inspired agent framework built on a universal loop:
+Agentic System is an RL-inspired agent framework built around one small control law:
 
-```
-state → agent(state) → action → environment(action) → observation → state
+```text
+state -> agent -> action -> environment -> observation -> state
 ```
 
-## Package Layout
+The LLM is the `Agent`. The `Environment` is a real executable sandbox. `State` is structured context, not a vague chat log. The loop stays grounded by runtime evidence.
 
-```
-agentic_system/
-  core/           → state, action, agent, environment, loop
-  runtime/        → sandbox, approval, host, cli
-  providers/      → ollama, openai_compat (deepseek, lmstudio, zai)
-  context/        → skill_loader, knowledge_loader, prompt_builder
-  builtin_skills/ → 9 built-in skills (bootstrapped into workspace)
-  prompts/        → system prompt templates
-tests/
-knowledge/
-```
+## Elegant Agentic Loop
+
+![Agentic System working loop](docs/assets/agentic-system-loop.png)
+
+The illustration above captures the design used throughout the repo:
+
+- `State` is built from `workflow_summary`, `workflow_history`, and `latest_context`.
+- `Agent` reasons over that state and emits exactly one action.
+- `Action` can `chat`, `think`, `exec`, or `delegate`.
+- `Sandbox` is the agent's computer: it can run bash and python, and it can use skills as installable software.
+- `Runtime Evidence` flows back into state through stdout/stderr observations.
+- `User` sits outside the loop.
+- `Sub-agent Loop` mirrors the same pattern in an isolated delegated workspace.
 
 ## Install
 
@@ -26,31 +28,23 @@ knowledge/
 python -m pip install -e .
 ```
 
-This installs the `agentic-system` CLI. You can also run the module form with `python -m agentic_system`.
+This installs the `agentic-system` CLI. You can also run:
 
-## UI Setup
+```bash
+python -m agentic_system
+```
 
-The UI is the interactive terminal REPL started by `agentic-system` or `python -m agentic_system`.
+## Quick Start
 
-Before launching it, make sure these pieces are ready:
+You need three things:
 
-1. Install the package in your current Python environment.
-2. Choose a `workspace` directory for project files and generated artifacts.
-3. Configure an LLM provider:
-   - `ollama`: local service, no API key required
-   - `zai`: requires `ZAI_API_KEY` or `OPENAI_COMPAT_API_KEY`
-   - `deepseek`: requires `DEEPSEEK_API_KEY` or `OPENAI_COMPAT_API_KEY`
-   - `lmstudio`: local OpenAI-compatible server, API key usually not required
-4. Optional built-in tool backends:
-   - image analysis defaults to `ollama` + `glm-ocr`
-   - image generation defaults to `ollama` + `x/z-image-turbo`
-   - web search defaults to `http://127.0.0.1:8888` for SearXNG
-
-## Provider Setup
+1. a workspace directory
+2. an LLM provider
+3. optional tool backends if you want search or image skills
 
 ### Default Local Setup: Ollama
 
-Install and start Ollama, then make sure the model you want is available:
+Start Ollama and pull the default models:
 
 ```bash
 ollama serve
@@ -65,96 +59,111 @@ Then launch the UI:
 agentic-system --workspace .
 ```
 
-If you want a different Ollama model:
+### Other Providers
+
+Use one of these if you do not want Ollama for the core model:
 
 ```bash
-agentic-system --workspace . --provider ollama --model qwen2.5:14b
-```
-
-### Remote Setup: Z.AI
-
-Export your API key before starting the UI:
-
-```bash
+# Z.AI
 export ZAI_API_KEY="your-zai-api-key"
-```
-
-Then launch:
-
-```bash
 agentic-system --workspace . --provider zai --model glm-5
-```
 
-If you want to use Z.AI's Coding API instead of the general API, set `ZAI_BASE_URL` before launch:
-
-```bash
-export ZAI_API_KEY="your-zai-api-key"
-export ZAI_BASE_URL="https://api.z.ai/api/coding/paas/v4"
-
-agentic-system --workspace . --provider zai --model glm-5
-```
-
-The runtime will append `/chat/completions`, so this targets:
-
-```text
-https://api.z.ai/api/coding/paas/v4/chat/completions
-```
-
-### Remote Setup: DeepSeek
-
-Export your API key before starting the UI:
-
-```bash
+# DeepSeek
 export DEEPSEEK_API_KEY="your-deepseek-api-key"
-```
-
-Then launch:
-
-```bash
 agentic-system --workspace . --provider deepseek --model deepseek-chat
-```
 
-### Local OpenAI-Compatible Setup: LM Studio
-
-Start LM Studio's local server, then launch:
-
-```bash
+# LM Studio
+export LMSTUDIO_BASE_URL="http://localhost:1234/v1"   # only if not using the default
 agentic-system --workspace . --provider lmstudio
 ```
 
-If your local server uses a different base URL:
+## Sessions
+
+- `workspace` is the shared project and artifact directory.
+- `session_id` is the conversation memory key.
+- without `--session-id`, the run is ephemeral
+- with `--session-id`, state is saved to `WORKSPACE/.sessions/<session_id>.json`
+
+Examples:
 
 ```bash
-export LMSTUDIO_BASE_URL="http://localhost:1234/v1"
-agentic-system --workspace . --provider lmstudio
+# fresh ephemeral run
+agentic-system --workspace .
+
+# start or resume a named session
+agentic-system --workspace . --session-id design-review-01
+
+# start a different session against the same workspace
+agentic-system --workspace . --session-id bugfix-02
 ```
 
-## SearXNG Setup
+## CLI Essentials
 
-The search skill uses an external SearXNG server. The UI does not start it automatically.
+| Argument | Default | Purpose |
+|---|---|---|
+| `--workspace` | required | workspace root |
+| `--session-id` | none | persistent conversation key |
+| `--provider` | `ollama` | core model provider |
+| `--mode` | `controlled` | `controlled` asks before exec, `auto` does not |
+| `--model` | provider default | override the provider's default model |
+| `--searxng-base-url` | `http://127.0.0.1:8888` | search backend URL |
 
-Recommended local setup uses the official SearXNG Docker image and the default runtime URL:
+Provider model defaults when `--model` is omitted:
+
+- `ollama` -> `llama3.1:8b`
+- `deepseek` -> `deepseek-chat`
+- `zai` -> `glm-5`
+- `lmstudio` -> `local-model`
+- `openai_compatible` -> `local-model`
+
+## Runtime Commands
+
+- `/help` — show commands
+- `/status` — show runtime configuration and session status
+- `/full_history` — open the saved full history view for the current named session
+- `/observation` — open the current observation window view
+- `/workflow_summary` — open the saved compact summary view
+- `/last_prompt` — open the exact last prompt sent to the model
+- `/exit` — quit
+
+The inspection commands require `--session-id`.
+
+## Optional Tool Backends
+
+### Image Skills
+
+If you use the built-in image skills, the runtime defaults are:
+
+- image analysis: `ollama` + `glm-ocr`
+- image generation: `ollama` + `x/z-image-turbo`
+
+If those models are not available locally, change them with CLI flags or env vars before startup.
+
+### Web Search: SearXNG
+
+The search skill uses an external SearXNG instance. The runtime does not start it for you.
+
+Default URL:
 
 ```text
 http://127.0.0.1:8888
 ```
 
-### Quick Local Setup
+Minimal local setup with Docker:
 
-1. Install Docker.
-2. Pull the official SearXNG image:
+1. Pull the image:
 
 ```bash
 docker pull docker.io/searxng/searxng:latest
 ```
 
-3. Create local config and data directories:
+2. Create config and data directories:
 
 ```bash
 mkdir -p ./searxng/config ./searxng/data
 ```
 
-4. Create `./searxng/config/settings.yml` and enable JSON search results:
+3. Create `./searxng/config/settings.yml`:
 
 ```yaml
 use_default_settings: true
@@ -170,11 +179,7 @@ search:
     - json
 ```
 
-Why this is required:
-- the search skill calls SearXNG with `format=json`
-- SearXNG returns `403 Forbidden` if `json` is not enabled in `settings.yml`
-
-5. Start SearXNG on port `8888`:
+4. Start SearXNG:
 
 ```bash
 docker run --name searxng -d \
@@ -184,183 +189,58 @@ docker run --name searxng -d \
   docker.io/searxng/searxng:latest
 ```
 
-6. Verify the service is reachable and JSON output works:
+5. Verify it:
 
 ```bash
 curl http://127.0.0.1:8888
 curl 'http://127.0.0.1:8888/search?q=test&format=json'
 ```
 
-If the second command returns `403 Forbidden`, your `settings.yml` is still not enabling `json`.
-
-7. Start the UI:
-
-```bash
-agentic-system --workspace .
-```
-
-### Use a Different SearXNG Endpoint
-
-If your SearXNG server is already running elsewhere:
+If you already have SearXNG elsewhere:
 
 ```bash
 agentic-system --workspace . --searxng-base-url http://your-host:port
 ```
 
-or:
-
-```bash
-export SEARXNG_BASE_URL="http://your-host:port"
-agentic-system --workspace .
-```
-
-### Stop the Local Container
+Stop the local container with:
 
 ```bash
 docker container stop searxng
 docker container rm searxng
 ```
 
-## Quick Start
+## How To Think About The System
 
-```bash
-# Default startup: Ollama + controlled mode
-agentic-system --workspace .
-
-# Resume a named session in the current workspace
-agentic-system --workspace . --session-id design-review-01
-
-# Start a separate named session in the same workspace
-agentic-system --workspace . --session-id bugfix-02
-
-# Auto mode (no confirmation prompts)
-agentic-system --workspace . --mode auto
-
-# With DeepSeek
-agentic-system --workspace ~/agent --provider deepseek
-
-# With Z.AI
-agentic-system --workspace ~/agent --provider zai --model glm-5
-
-# Custom tool models
-agentic-system --workspace . \
-  --image-analysis-model glm-ocr \
-  --image-generation-model x/z-image-turbo \
-  --searxng-base-url http://127.0.0.1:8888
-```
-
-## How Sessions Work
-
-- `workspace` is the shared project/artifact directory.
-- `session_id` is the conversation memory key.
-- If you omit `--session-id`, the run is ephemeral: it starts fresh and does not persist session memory on exit.
-- If you provide `--session-id`, session state is loaded from `WORKSPACE/.sessions/<session_id>.json` if it already exists, otherwise a new named session is created there.
-- Files created by the agent stay in the workspace regardless of session mode.
-
-Typical pattern:
-
-```bash
-# First run
-agentic-system --workspace ~/projects/my-app --session-id feature-plan
-
-# Later, resume the same conversation
-agentic-system --workspace ~/projects/my-app --session-id feature-plan
-
-# Start a different conversation against the same project files
-agentic-system --workspace ~/projects/my-app --session-id release-check
-```
-
-## Usage Notes
-
-- Default provider: `ollama`
-- Default mode: `controlled`
-- `--workspace` is required
-- `--model` is optional; provider defaults are used when omitted
-- `--session-id` is optional; omit it for an ephemeral run
-- Built-in skills are synced into `WORKSPACE/skills/` on startup
-- The startup banner and `/status` show whether the current session is `ephemeral`, `new`, or `loaded`
-- Module form is equivalent: `python -m agentic_system --workspace .`
-- SearXNG is external; the runtime does not auto-start it
-
-## CLI Reference
-
-| Argument | Default | Notes |
-|---|---|---|
-| `--workspace` | required | Workspace directory for files, artifacts, and skills |
-| `--session-id` | none | If omitted, the run is ephemeral |
-| `--provider` | `ollama` | One of `ollama`, `deepseek`, `lmstudio`, `zai`, `openai_compatible` |
-| `--mode` | `controlled` | `controlled` asks before exec; `auto` does not |
-| `--model` | provider-specific | If omitted, the provider default model is used |
-| `--image-analysis-provider` | `ollama` | Effective runtime default |
-| `--image-analysis-model` | `glm-ocr` | Effective runtime default |
-| `--image-generation-provider` | `ollama` | Effective runtime default |
-| `--image-generation-model` | `x/z-image-turbo` | Effective runtime default |
-| `--searxng-base-url` | `http://127.0.0.1:8888` | Effective runtime default for web search |
-
-Provider model defaults when `--model` is omitted:
-
-- `ollama` → `llama3.1:8b`
-- `deepseek` → `deepseek-chat`
-- `zai` → `glm-5`
-- `lmstudio` → `local-model`
-- `openai_compatible` → `local-model`
-
-## Runtime Commands
-
-- `/help` — show available commands
-- `/status` — runtime overview (provider, mode, session, tool config, history)
-- `/full_history` — show the full in-memory history from `Environment.full_history`
-- `/observation` — show the current observation window from `Environment.observation`
-- `/workflow_summary` — show the current `Environment.workflow_summary`
-- `/last_prompt` — show the last prompt sent to the core agent
-- `/exit` — quit
-
-## Architecture
-
-**4 action types** cover everything:
-- `chat` — respond to user
-- `think` — continue the loop without handing control back yet
-- `exec` — run bash/python in the workspace sandbox
-- `delegate` — spawn a sub-agent with an isolated child workspace
-
-**Skills** are drop-in folders with `SKILL.md` + scripts. 9 built-in skills ship with the package and are synced into the workspace on startup.
-
-**Providers**: `ollama`, `deepseek`, `lmstudio`, `zai`, `openai_compatible`.
-
-## Configuration
-
-| Env Var | Default | Purpose |
-|---|---|---|
-| `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
-| `OLLAMA_MODEL` | `llama3.1:8b` | Default core-agent model when provider is `ollama` |
-| `DEEPSEEK_API_KEY` | none | API key for `--provider deepseek` |
-| `DEEPSEEK_BASE_URL` | `https://api.deepseek.com` | DeepSeek API base URL |
-| `DEEPSEEK_MODEL` | `deepseek-chat` | Default model for `--provider deepseek` |
-| `ZAI_API_KEY` | none | API key for `--provider zai` |
-| `ZAI_BASE_URL` | `https://api.z.ai/api/paas/v4` | Z.AI base URL; can also point to the Coding API such as `https://api.z.ai/api/coding/paas/v4` |
-| `ZAI_MODEL` | `glm-5` | Default model for `--provider zai` |
-| `LMSTUDIO_BASE_URL` | `http://localhost:1234/v1` | LM Studio API base URL |
-| `LMSTUDIO_MODEL` | `local-model` | Default model for `--provider lmstudio` |
-| `OPENAI_COMPAT_API_KEY` | none | Generic fallback API key for OpenAI-compatible providers |
-| `OPENAI_COMPAT_BASE_URL` | none | Generic fallback base URL for OpenAI-compatible providers |
-| `OPENAI_COMPAT_MODEL` | none | Generic fallback model for OpenAI-compatible providers |
-| `IMAGE_ANALYSIS_PROVIDER` | `ollama` | Image understanding provider |
-| `IMAGE_ANALYSIS_MODEL` | `glm-ocr` | Image understanding model |
-| `IMAGE_GENERATION_PROVIDER` | `ollama` | Image generation provider |
-| `IMAGE_GENERATION_MODEL` | `x/z-image-turbo` | Image generation model |
-| `SEARXNG_BASE_URL` | `http://127.0.0.1:8888` | SearXNG for web search |
-
-CLI flags (`--image-analysis-model`, etc.) override env vars.
+- The loop is small on purpose.
+- The LLM does not directly change the world; it acts through the sandbox.
+- Memory is layered:
+  - `workflow_summary` for durable compact state
+  - `workflow_history` for recent evidence
+  - workspace files for persistent artifacts
+- Skills are reusable software modules synced into `WORKSPACE/skills/`.
+- Sub-agents use the same loop in isolated child workspaces.
 
 ## Troubleshooting
 
-- `zai HTTP 401` or `Authentication parameter not received in Header`
-  Set `ZAI_API_KEY` before starting the UI.
 - `Missing API key for provider 'zai'`
-  The runtime did not find `ZAI_API_KEY` or `OPENAI_COMPAT_API_KEY`.
+  Set `ZAI_API_KEY` or `OPENAI_COMPAT_API_KEY`.
 - `Missing API key for provider 'deepseek'`
-  The runtime did not find `DEEPSEEK_API_KEY` or `OPENAI_COMPAT_API_KEY`.
+  Set `DEEPSEEK_API_KEY` or `OPENAI_COMPAT_API_KEY`.
 - Ollama connection failures
-  Make sure `ollama serve` is running and the selected model is available locally.
-- Search skill cannot reach SearXNG
-  Start a local SearXNG instance or override `--searxng-base-url` to a reachable endpoint.
+  Make sure `ollama serve` is running and the model exists locally.
+- Search returns `403 Forbidden`
+  Your SearXNG `settings.yml` is likely missing `json` under `search.formats`.
+- Search returns connection refused
+  SearXNG is not running or the configured URL is wrong.
+
+## Repo Layout
+
+```text
+agentic_system/
+  core/           -> state, action, agent, environment, loop
+  runtime/        -> sandbox, approval, host, cli
+  context/        -> prompt building, skill loading, knowledge loading
+  providers/      -> ollama and OpenAI-compatible providers
+  builtin_skills/ -> shipped skills bootstrapped into each workspace
+  prompts/        -> system prompt templates
+```

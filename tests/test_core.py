@@ -61,6 +61,22 @@ def test_parse_exec():
     print("  Parse exec OK")
 
 
+def test_parse_exec_script_args_array():
+    raw = '<output>{"response": "Running", "action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": ["--query", "hello", "--limit", "5"]}}</output>'
+    a = parse_action(raw)
+    assert a.type == "exec"
+    assert a.payload["script_args"] == ["--query", "hello", "--limit", "5"]
+    print("  Parse exec script_args array OK")
+
+
+def test_parse_exec_script_args_string():
+    raw = '<output>{"response": "Running", "action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": "--query \\"hello\\" --limit 5"}}</output>'
+    a = parse_action(raw)
+    assert a.type == "exec"
+    assert a.payload["script_args"] == '--query "hello" --limit 5'
+    print("  Parse exec script_args string OK")
+
+
 def test_parse_delegate():
     raw = '<output>{"response": "Delegating", "action": "delegate", "action_input": {"role": "researcher", "objective": "Find info"}}</output>'
     a = parse_action(raw)
@@ -111,6 +127,24 @@ def test_parse_error_exec_both_script_and_path():
         assert False, "Should have raised"
     except ActionParseError:
         print("  Parse error (exec both script+path) OK")
+
+
+def test_parse_error_exec_invalid_script_args_type():
+    raw = '<output>{"response": "R", "action": "exec", "action_input": {"code_type": "python", "script_path": "skills/x.py", "script_args": {"bad": true}}}</output>'
+    try:
+        parse_action(raw)
+        assert False, "Should have raised"
+    except ActionParseError:
+        print("  Parse error (exec invalid script_args type) OK")
+
+
+def test_parse_error_exec_script_args_with_script():
+    raw = '<output>{"response": "R", "action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_args": ["--bad"]}}</output>'
+    try:
+        parse_action(raw)
+        assert False, "Should have raised"
+    except ActionParseError:
+        print("  Parse error (exec script_args with script) OK")
 
 
 def test_parse_error_delegate_missing_role():
@@ -164,12 +198,29 @@ def test_environment_compaction():
             env.record(Turn(role="agent", content=f"Turn {i} " + "x" * 100))
         assert len(env.full_history) == 20  # full_history never compacted
         state = env.build_state()
-        # After compaction: 1 compactor turn + 2 recent = 3
-        assert len(state.observation) == 3
-        assert state.observation[0].role == "compactor"
+        # After compaction: only the 2 recent turns remain in observation.
+        assert len(state.observation) == 2
         assert env.workflow_summary  # summary was generated
         assert len(env.full_history) == 20  # full_history still intact
         print("  Compaction OK")
+
+
+def test_agent_prompt_keeps_summary_separate_from_recent_history():
+    state = State(
+        observation=[
+            Turn(role="runtime", content="Job succeeded."),
+            Turn(role="user", content="what now?"),
+        ],
+        workflow_summary="## Summary\nCompacted",
+    )
+    agent = Agent(type("MockModel", (), {"generate": lambda self, *args, **kwargs: ""})(), system_prompt="test")
+
+    prompt = agent._build_prompt(state)
+
+    assert "<workflow_summary>\n## Summary\nCompacted\n</workflow_summary>" in prompt
+    assert "runtime> Job succeeded." in prompt
+    assert "what now?" in prompt
+    print("  Prompt keeps summary separate from recent history OK")
 
 
 def test_environment_compaction_error():
@@ -313,6 +364,7 @@ if __name__ == "__main__":
     test_environment_dual_history()
     test_environment_build_state()
     test_environment_compaction()
+    test_agent_prompt_keeps_summary_separate_from_recent_history()
     test_environment_compaction_error()
     test_environment_persistence()
 

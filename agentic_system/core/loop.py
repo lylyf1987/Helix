@@ -29,6 +29,7 @@ def run_loop(
     output: TextIO = sys.stdout,
     on_turn_start: Callable[[str], None] | None = None,
     on_turn_end: Callable[[], None] | None = None,
+    on_turn_error: Callable[[], None] | None = None,
     on_token_chunk: Callable[[str], None] | None = None,
 ) -> str:
     """Universal agent loop.
@@ -44,7 +45,8 @@ def run_loop(
         max_retries: Maximum consecutive parse failures before forced stop.
         output: Stream for runtime status messages.
         on_turn_start: Optional callback fired before the agent acts.
-        on_turn_end: Optional callback fired after agent output is finalized.
+        on_turn_end: Optional callback fired after a valid agent output is finalized.
+        on_turn_error: Optional callback fired after a parse-failed attempt.
         on_token_chunk: Optional callback for streaming agent responses.
 
     Returns:
@@ -75,8 +77,8 @@ def run_loop(
             )
             consecutive_failures = 0
         except ActionParseError as exc:
-            if on_turn_end:
-                on_turn_end()
+            if on_turn_error:
+                on_turn_error()
             consecutive_failures += 1
             env.record(Turn(
                 role="runtime",

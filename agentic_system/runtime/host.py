@@ -11,10 +11,14 @@ Usage::
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+from datetime import datetime
+from html import escape
 from pathlib import Path
 from typing import Optional
 
@@ -94,39 +98,297 @@ def extract_streaming_response(partial_text: str) -> "str | None":
         i += 1
     return "".join(result_chars) if result_chars else None
 
+def _render_session_view_html(
+    *,
+    session_id: str,
+    field: str,
+    session_path: Path,
+    value: object,
+) -> str:
+    """Render a field-specific session JSON view as a readable HTML page."""
+    def _render_text_view(*, eyebrow: str, body_text: str) -> str:
+        title = escape(f"Session View - {session_id} - {field}")
+        escaped_body = escape(body_text)
+        return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #f3efe6;
+        --panel: rgba(255, 252, 245, 0.92);
+        --border: rgba(46, 58, 89, 0.14);
+        --text: #1f2430;
+        --muted: #6a7280;
+        --accent: #1e6aa8;
+        --shadow: 0 20px 50px rgba(31, 36, 48, 0.10);
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: Menlo, Monaco, "SFMono-Regular", Consolas, monospace;
+        background:
+          radial-gradient(circle at top left, rgba(30, 106, 168, 0.12), transparent 34%),
+          linear-gradient(180deg, #f8f5ee 0%, var(--bg) 100%);
+        color: var(--text);
+      }}
+      main {{
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 32px 24px 48px;
+      }}
+      .header {{
+        margin-bottom: 20px;
+      }}
+      .eyebrow {{
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }}
+      h1 {{
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.2;
+      }}
+      .sub {{
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }}
+      .panel {{
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }}
+      .panel-head {{
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+        color: var(--muted);
+      }}
+      pre {{
+        margin: 0;
+        padding: 22px 24px 28px;
+        font-size: 13px;
+        line-height: 1.55;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="header">
+        <div class="eyebrow">{escape(eyebrow)}</div>
+        <h1>{escape(field)}</h1>
+        <p class="sub">Session <strong>{escape(session_id)}</strong></p>
+      </div>
+      <section class="panel">
+        <div class="panel-head">{escape(str(session_path))}</div>
+        <pre>{escaped_body}</pre>
+      </section>
+    </main>
+  </body>
+</html>
+"""
 
-def _format_turn_dump(tag: str, turns: list[Turn]) -> str:
-    """Format a turn list for inspection in the REPL."""
-    if not turns:
-        body = "(empty)"
-    else:
-        body = "\n".join(
-            f"[{turn.timestamp}] {turn.role}> {turn.content}"
-            for turn in turns
+    if field == "last_prompt":
+        prompt_text = str(value) if str(value) else "(none yet)"
+        return _render_text_view(
+            eyebrow="Agentic System Prompt View",
+            body_text=prompt_text,
         )
-    return f"<{tag}>\n{body}\n</{tag}>"
+
+    if field in {"full_history", "observation"}:
+        turns = value if isinstance(value, list) else []
+        lines: list[str] = []
+        for turn in turns:
+            if not isinstance(turn, dict):
+                continue
+            timestamp = str(turn.get("timestamp", "") or "")
+            role = str(turn.get("role", "unknown") or "unknown")
+            content = str(turn.get("content", "") or "")
+            lines.append(f"[{timestamp}] {role}> {content}")
+        body_text = "\n".join(lines) if lines else "(empty)"
+        return _render_text_view(
+            eyebrow="Agentic System Timeline View",
+            body_text=body_text,
+        )
+
+    payload = {
+        "session_id": session_id,
+        "field": field,
+        "source_session_file": str(session_path),
+        "generated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "value": value,
+    }
+    pretty_json = json.dumps(payload, indent=2, ensure_ascii=False)
+    escaped_json = escape(pretty_json)
+    title = escape(f"Session View - {session_id} - {field}")
+
+    return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <style>
+      :root {{
+        color-scheme: light;
+        --bg: #f3efe6;
+        --panel: rgba(255, 252, 245, 0.92);
+        --border: rgba(46, 58, 89, 0.14);
+        --text: #1f2430;
+        --muted: #6a7280;
+        --accent: #1e6aa8;
+        --shadow: 0 20px 50px rgba(31, 36, 48, 0.10);
+      }}
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: Menlo, Monaco, "SFMono-Regular", Consolas, monospace;
+        background:
+          radial-gradient(circle at top left, rgba(30, 106, 168, 0.12), transparent 34%),
+          linear-gradient(180deg, #f8f5ee 0%, var(--bg) 100%);
+        color: var(--text);
+      }}
+      main {{
+        max-width: 1100px;
+        margin: 0 auto;
+        padding: 32px 24px 48px;
+      }}
+      .header {{
+        margin-bottom: 20px;
+      }}
+      .eyebrow {{
+        color: var(--accent);
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }}
+      h1 {{
+        margin: 0 0 8px;
+        font-size: 28px;
+        line-height: 1.2;
+      }}
+      .sub {{
+        margin: 0;
+        color: var(--muted);
+        font-size: 14px;
+      }}
+      .panel {{
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 18px;
+        box-shadow: var(--shadow);
+        overflow: hidden;
+      }}
+      .panel-head {{
+        padding: 16px 18px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.72);
+        font-size: 13px;
+        color: var(--muted);
+      }}
+      pre {{
+        margin: 0;
+        padding: 22px 24px 28px;
+        font-size: 13px;
+        line-height: 1.55;
+        overflow: auto;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="header">
+        <div class="eyebrow">Agentic System Session View</div>
+        <h1>{escape(field)}</h1>
+        <p class="sub">Session <strong>{escape(session_id)}</strong></p>
+      </div>
+      <section class="panel">
+        <div class="panel-head">{escape(str(session_path))}</div>
+        <pre>{escaped_json}</pre>
+      </section>
+    </main>
+  </body>
+</html>
+"""
 
 
-def _format_text_dump(tag: str, text: str) -> str:
-    """Format a plain text field for inspection in the REPL."""
-    body = text or "(empty)"
-    return f"<{tag}>\n{body}\n</{tag}>"
+def _open_file_in_viewer(path: Path) -> bool:
+    """Best-effort open of a file in the platform's default viewer."""
+    try:
+        if sys.platform == "darwin":
+            subprocess.run(
+                ["open", str(path)],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        if sys.platform.startswith("linux"):
+            subprocess.run(
+                ["xdg-open", str(path)],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            return True
+        if sys.platform.startswith("win"):
+            os.startfile(str(path))  # type: ignore[attr-defined]
+            return True
+    except Exception:
+        return False
+    return False
+
+
+def _read_session_payload(path: Path) -> dict[str, object] | None:
+    """Read a session JSON object from disk."""
+    if not path.exists():
+        return None
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return None
+    return raw if isinstance(raw, dict) else None
+
+
+def _write_session_payload(path: Path, payload: dict[str, object]) -> None:
+    """Write a session JSON object to disk atomically."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    tmp.replace(path)
 
 
 class StreamingDisplay:
-    """Stateful streaming callback that shows only the parsed response.
+    """Stateful streaming callback that buffers only the parsed response.
 
     Accumulates raw LLM tokens and uses extract_streaming_response() to
-    progressively display the response text with an 'agent>' prefix.
-    Raw JSON structure (tags, keys, action, action_input) is hidden.
+    track the latest response text. The text is only printed if the turn
+    later passes parsing/validation. Raw JSON structure remains hidden.
     """
 
     def __init__(self, output: "TextIO" = None) -> None:
         import sys as _sys
         self._output = output or _sys.stdout
         self._accumulated = ""
-        self._displayed_len = 0
-        self._prefix_printed = False
+        self._response_text = ""
         self._current_name = "agent"
 
     def __call__(self, token: str) -> None:
@@ -135,30 +397,25 @@ class StreamingDisplay:
         response = extract_streaming_response(self._accumulated)
         if response is None:
             return
-
-        if not self._prefix_printed:
-            self._output.write(f"\n{self._current_name}> ")
-            self._prefix_printed = True
-
-        # Print only the NEW characters since last display
-        new_text = response[self._displayed_len:]
-        if new_text:
-            self._output.write(new_text)
-            self._output.flush()
-            self._displayed_len = len(response)
+        self._response_text = response
 
     def reset(self, name: str = "agent") -> None:
         """Reset state for a new turn."""
         self._accumulated = ""
-        self._displayed_len = 0
-        self._prefix_printed = False
+        self._response_text = ""
         self._current_name = name
 
-    def finalize(self) -> None:
-        """Print trailing newline after generation completes."""
-        if self._prefix_printed:
-            self._output.write("\n")
-            self._output.flush()
+    def commit(self) -> None:
+        """Print the buffered response after successful parsing."""
+        if not self._response_text:
+            return
+        self._output.write(f"\n{self._current_name}> {self._response_text}\n")
+        self._output.flush()
+
+    def discard(self) -> None:
+        """Drop any buffered response from a failed parse attempt."""
+        self._accumulated = ""
+        self._response_text = ""
 
 
 # --------------------------------------------------------------------------- #
@@ -255,10 +512,10 @@ class RuntimeHost:
         "Commands:",
         "  /help            Show this help.",
         "  /status          Show session status.",
-        "  /full_history    Show the full in-memory history.",
-        "  /observation     Show the current observation window.",
-        "  /workflow_summary  Show the current workflow summary.",
-        "  /last_prompt     Show the last prompt sent to the core agent.",
+        "  /full_history    Open the session full_history view.",
+        "  /observation     Open the session observation view.",
+        "  /workflow_summary  Open the session workflow_summary view.",
+        "  /last_prompt     Open the session last_prompt view.",
         "  /exit            Quit.",
     ])
 
@@ -318,7 +575,10 @@ class RuntimeHost:
             mode=mode,
         )
         if self.session_path is not None:
-            self._session_loaded = self._env.load_session(self.session_path)
+            if self._env.load_session(self.session_path):
+                raw_session = _read_session_payload(self.session_path) or {}
+                self._agent.last_prompt = str(raw_session.get("last_prompt", "") or "")
+                self._session_loaded = True
 
         # Wire model into environment for sub-agent delegation
         self._env.set_model_ref(self._model)
@@ -454,6 +714,7 @@ class RuntimeHost:
         """Record user message and run the agent loop to completion."""
         # Record user turn
         self._env.record(Turn(role="user", content=user_text))
+        self._stream_display._output = sys.stdout
 
         try:
             # Run agent loop (prints agent responses as they happen)
@@ -461,7 +722,8 @@ class RuntimeHost:
                 self._agent,
                 self._env,
                 on_turn_start=self._stream_display.reset,
-                on_turn_end=self._stream_display.finalize,
+                on_turn_end=self._stream_display.commit,
+                on_turn_error=self._stream_display.discard,
                 on_token_chunk=self._stream_display,
             )
         except RuntimeError as exc:
@@ -483,13 +745,13 @@ class RuntimeHost:
         if cmd == "/status":
             return self._status_text()
         if cmd == "/full_history":
-            return _format_turn_dump("full_history", self._env.full_history)
+            return self._open_session_field_view("full_history")
         if cmd == "/observation":
-            return _format_turn_dump("observation", self._env.observation)
+            return self._open_session_field_view("observation")
         if cmd == "/workflow_summary":
-            return _format_text_dump("workflow_summary", self._env.workflow_summary)
+            return self._open_session_field_view("workflow_summary")
         if cmd == "/last_prompt":
-            return _format_text_dump("last_prompt", self._agent.last_prompt or "(none yet)")
+            return self._open_session_field_view("last_prompt")
         return f"Unknown command: {cmd}. Use /help."
 
     def _status_text(self) -> str:
@@ -517,11 +779,43 @@ class RuntimeHost:
         except Exception:
             pass
 
+    def _open_session_field_view(self, field: str) -> str:
+        """Persist and open a field-specific HTML view for the current session."""
+        if self.session_path is None or self.session_id is None:
+            return "Inspection commands require --session-id because no session file exists."
+
+        self._persist_session()
+        raw_session = _read_session_payload(self.session_path)
+        if raw_session is None:
+            return f"Unable to read session file: {self.session_path}"
+
+        value = raw_session.get(field, "(missing)")
+        if field == "last_prompt" and not str(value):
+            value = "(none yet)"
+        html = _render_session_view_html(
+            session_id=self.session_id,
+            field=field,
+            session_path=self.session_path,
+            value=value,
+        )
+
+        view_dir = self.session_path.parent / "views"
+        view_dir.mkdir(parents=True, exist_ok=True)
+        view_path = (view_dir / f"{self.session_id}.{field}.html").resolve()
+        view_path.write_text(html, encoding="utf-8")
+
+        if _open_file_in_viewer(view_path):
+            return f"Opened session view: {view_path}"
+        return f"Session view written: {view_path}"
+
     def _persist_session(self) -> None:
         """Persist session state when a named session is active."""
         if self.session_path is None:
             return
         self._env.save_session(self.session_path)
+        payload = _read_session_payload(self.session_path) or {}
+        payload["last_prompt"] = self._agent.last_prompt
+        _write_session_payload(self.session_path, payload)
 
     def _session_state(self) -> str:
         """Return a short user-visible description of current session mode."""

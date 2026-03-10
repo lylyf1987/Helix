@@ -4,6 +4,7 @@ Tests the RuntimeHost initialization, provider factory, slash commands,
 and the full message processing pipeline (without a real LLM).
 """
 
+import json
 import sys
 import tempfile
 from io import StringIO
@@ -105,6 +106,9 @@ def test_host_init_with_session_id_loads_existing_state():
         env.record(Turn(role="core-agent", content="Previous response"))
         env.workflow_summary = "Prior summary"
         env.save_session(session_path)
+        raw = json.loads(session_path.read_text(encoding="utf-8"))
+        raw["last_prompt"] = "Prior prompt"
+        session_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
         host = RuntimeHost(
             workspace=workspace,
@@ -118,6 +122,7 @@ def test_host_init_with_session_id_loads_existing_state():
         assert host._session_loaded is True
         assert len(host._env.full_history) == 2
         assert host._env.workflow_summary == "Prior summary"
+        assert host._agent.last_prompt == "Prior prompt"
         print("  RuntimeHost named session resume OK")
 
 
@@ -148,63 +153,97 @@ def test_host_command_status():
 
 
 def test_host_command_full_history():
-    """Verify /full_history returns the in-memory full history content."""
+    """Verify /full_history opens a raw timeline view."""
     with tempfile.TemporaryDirectory() as td:
-        host = RuntimeHost(workspace=Path(td))
+        host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._env.record(Turn(
             role="user",
             content="Hello",
             timestamp="2026-03-10 00:41:55",
         ))
-        result = host._handle_command("/full_history")
-        assert "<full_history>" in result
-        assert "[2026-03-10 00:41:55] user> Hello" in result
-        assert "user> Hello" in result
+        with patch("agentic_system.runtime.host._open_file_in_viewer", return_value=True):
+            result = host._handle_command("/full_history")
+        path = Path(td) / ".sessions" / "views" / "debug-01.full_history.html"
+        assert result == f"Opened session view: {path.resolve()}"
+        text = path.read_text(encoding="utf-8")
+        assert "Agentic System Timeline View" in text
+        assert '"value"' not in text
+        assert "[2026-03-10 00:41:55] user&gt; Hello" in text
+        assert "Hello" in text
         print("  /full_history command OK")
 
 
 def test_host_command_observation():
-    """Verify /observation returns the current observation content."""
+    """Verify /observation opens a raw timeline view."""
     with tempfile.TemporaryDirectory() as td:
-        host = RuntimeHost(workspace=Path(td))
+        host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._env.record(Turn(role="user", content="Hello"))
-        result = host._handle_command("/observation")
-        assert "<observation>" in result
-        assert "user> Hello" in result
+        with patch("agentic_system.runtime.host._open_file_in_viewer", return_value=True):
+            result = host._handle_command("/observation")
+        path = Path(td) / ".sessions" / "views" / "debug-01.observation.html"
+        assert result == f"Opened session view: {path.resolve()}"
+        text = path.read_text(encoding="utf-8")
+        assert "Agentic System Timeline View" in text
+        assert '"value"' not in text
+        assert "] user&gt; Hello" in text
+        assert "Hello" in text
         print("  /observation command OK")
 
 
 def test_host_command_workflow_summary():
-    """Verify /workflow_summary returns the current summary content."""
+    """Verify /workflow_summary opens a session-scoped HTML view."""
     with tempfile.TemporaryDirectory() as td:
-        host = RuntimeHost(workspace=Path(td))
+        host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._env.workflow_summary = "## Current Status\nWorking"
-        result = host._handle_command("/workflow_summary")
-        assert "<workflow_summary>" in result
-        assert "## Current Status" in result
+        with patch("agentic_system.runtime.host._open_file_in_viewer", return_value=True):
+            result = host._handle_command("/workflow_summary")
+        path = Path(td) / ".sessions" / "views" / "debug-01.workflow_summary.html"
+        assert result == f"Opened session view: {path.resolve()}"
+        text = path.read_text(encoding="utf-8")
+        assert "workflow_summary" in text
+        assert '## Current Status' in text
         print("  /workflow_summary command OK")
 
 
 def test_host_command_last_prompt():
-    """Verify /last_prompt returns the last prompt sent to the core agent."""
+    """Verify /last_prompt opens the raw prompt text exactly as sent to the model."""
     with tempfile.TemporaryDirectory() as td:
-        host = RuntimeHost(workspace=Path(td))
+        host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._agent.last_prompt = "system\n\n<latest_context>\n[user] Hello\n</latest_context>"
-        result = host._handle_command("/last_prompt")
-        assert "<last_prompt>" in result
-        assert "<latest_context>" in result
-        assert "[user] Hello" in result
+        with patch("agentic_system.runtime.host._open_file_in_viewer", return_value=True):
+            result = host._handle_command("/last_prompt")
+        path = Path(td) / ".sessions" / "views" / "debug-01.last_prompt.html"
+        assert result == f"Opened session view: {path.resolve()}"
+        text = path.read_text(encoding="utf-8")
+        assert "Agentic System Prompt View" in text
+        assert '"value"' not in text
+        assert '&lt;latest_context&gt;' in text
+        assert "system\n\n&lt;latest_context&gt;" in text
+        assert '[user] Hello' in text
         print("  /last_prompt command OK")
 
 
 def test_host_command_last_prompt_empty():
-    """Verify /last_prompt is explicit before any prompt is sent."""
+    """Verify /last_prompt writes a placeholder HTML view before first use."""
+    with tempfile.TemporaryDirectory() as td:
+        host = RuntimeHost(workspace=Path(td), session_id="debug-01")
+        with patch("agentic_system.runtime.host._open_file_in_viewer", return_value=False):
+            result = host._handle_command("/last_prompt")
+        path = Path(td) / ".sessions" / "views" / "debug-01.last_prompt.html"
+        assert result == f"Session view written: {path.resolve()}"
+        text = path.read_text(encoding="utf-8")
+        assert "last_prompt" in text
+        assert "(none yet)" in text
+        print("  /last_prompt empty OK")
+
+
+def test_host_command_views_require_session_id():
+    """Verify session inspection commands require a named session."""
     with tempfile.TemporaryDirectory() as td:
         host = RuntimeHost(workspace=Path(td))
-        result = host._handle_command("/last_prompt")
-        assert "<last_prompt>" in result
-        assert "(none yet)" in result
-        print("  /last_prompt empty OK")
+        result = host._handle_command("/full_history")
+        assert "require --session-id" in result
+        print("  Session views require session id OK")
 
 
 def test_host_command_exit():
@@ -295,6 +334,8 @@ def test_host_process_message_saves_named_session():
         reloaded = Environment(workspace=workspace)
         assert reloaded.load_session(session_path) is True
         assert any(t.content == "Persist this" for t in reloaded.full_history)
+        raw = json.loads(session_path.read_text(encoding="utf-8"))
+        assert raw["last_prompt"]
         print("  Named session persistence OK")
 
 
@@ -356,6 +397,58 @@ def test_host_process_message_runtime_error():
         assert len(runtime_turns) == 1
         assert "Missing API key for provider 'zai'" in runtime_turns[0].content
         print("  Message runtime error handling OK")
+
+
+def test_host_process_message_discards_parse_failed_preview():
+    """Verify parse-failed streamed text is not shown to the requester."""
+    with tempfile.TemporaryDirectory() as td:
+        host = RuntimeHost(workspace=Path(td))
+
+        call_count = [0]
+
+        def mock_generate(prompt, *, stream=False, chunk_callback=None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                bad = (
+                    '<output>'
+                    '{"response": "Discard this preview", '
+                    '"action": "chat", "action_input": {"bad": "\n"}}'
+                    '</output>'
+                )
+                if stream and chunk_callback is not None:
+                    for piece in ('<output>{"response": "Discard ', 'this preview", '):
+                        chunk_callback(piece)
+                return bad
+
+            good = (
+                '<output>'
+                '{"response": "Keep this final answer", '
+                '"action": "chat", "action_input": {}}'
+                '</output>'
+            )
+            if stream and chunk_callback is not None:
+                for piece in ('<output>{"response": "Keep ', 'this final answer", '):
+                    chunk_callback(piece)
+            return good
+
+        host._model.generate = mock_generate
+
+        captured = StringIO()
+        with patch("sys.stdout", captured):
+            host._process_message("Retry if needed")
+
+        output = captured.getvalue()
+        assert "Discard this preview" not in output
+        assert "Keep this final answer" in output
+
+        runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
+        assert len(runtime_turns) == 1
+        assert "Output parse error" in runtime_turns[0].content
+
+        agent_turns = [t for t in host._env.full_history if t.role == "core-agent"]
+        assert len(agent_turns) == 1
+        assert "Keep this final answer" in agent_turns[0].content
+        print("  Parse-failed preview discarded OK")
 
 
 # =========================================================================== #
@@ -459,6 +552,7 @@ if __name__ == "__main__":
     test_host_command_workflow_summary()
     test_host_command_last_prompt()
     test_host_command_last_prompt_empty()
+    test_host_command_views_require_session_id()
     test_host_command_exit()
     test_host_command_unknown()
 
@@ -467,6 +561,7 @@ if __name__ == "__main__":
     test_host_process_message_saves_named_session()
     test_host_process_exec()
     test_host_process_message_runtime_error()
+    test_host_process_message_discards_parse_failed_preview()
 
     print("\n=== CLI Parser ===")
     test_cli_parser()

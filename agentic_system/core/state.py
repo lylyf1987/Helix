@@ -20,7 +20,6 @@ class Turn:
         - "agent"     — agent response / reasoning
         - "runtime"   — sandbox execution observation (stdout/stderr)
         - "sub_agent" — sub-agent result returned to parent
-        - "compactor" — compacted summary of older turns
     """
 
     role: str

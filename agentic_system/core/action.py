@@ -159,6 +159,37 @@ def _validate_exec_payload(payload: dict, raw_text: str) -> None:
             raw_text=raw_text,
         )
 
+    raw_args = payload.get("script_args")
+    if raw_args is None:
+        return
+
+    if isinstance(raw_args, str):
+        args_present = bool(raw_args.strip())
+    elif isinstance(raw_args, (list, tuple)):
+        args_present = bool(raw_args)
+    else:
+        raise ActionParseError(
+            "exec action 'script_args' must be either an array of strings or a shell-style argument string.",
+            raw_text=raw_text,
+        )
+
+    if not args_present:
+        return
+
+    if has_script:
+        raise ActionParseError(
+            "exec action 'script_args' is only allowed when using 'script_path'.",
+            raw_text=raw_text,
+        )
+
+    if isinstance(raw_args, (list, tuple)):
+        normalized = [str(item).strip() for item in raw_args]
+        if not normalized or any(not item for item in normalized):
+            raise ActionParseError(
+                "exec action 'script_args' array must contain only non-empty argument strings.",
+                raw_text=raw_text,
+            )
+
 
 def _validate_delegate_payload(payload: dict, raw_text: str) -> None:
     """Validate delegate action_input has required fields."""
@@ -172,5 +203,4 @@ def _validate_delegate_payload(payload: dict, raw_text: str) -> None:
             "delegate action requires a non-empty 'objective' field.",
             raw_text=raw_text,
         )
-
 

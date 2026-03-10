@@ -136,6 +136,10 @@ class Agent:
             sections.append(
                 f"<workflow_summary>\n{state.workflow_summary}\n</workflow_summary>"
             )
+        else:
+            sections.append(
+                "<workflow_summary>\n<empty>\n</workflow_summary>"
+            )
 
         if state.observation:
             # Split: history (all but last) + latest (last turn)

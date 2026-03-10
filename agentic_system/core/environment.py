@@ -100,7 +100,7 @@ class Environment:
         workspace: Path,
         *,
         mode: str = "controlled",
-        token_limit: int = int(256_000 * 0.75),
+        token_limit: int = int(20_000 * 0.75),
         keep_last_k: int = 10,
         executor: Optional[SandboxExecutor] = None,
     ) -> None:
@@ -164,11 +164,7 @@ class Environment:
                 self.workflow_summary, old_part
             )
 
-        summary_turn = Turn(
-            role="compactor",
-            content=self.workflow_summary,
-        )
-        self.observation = [summary_turn] + recent
+        self.observation = recent
 
         return State(
             observation=list(self.observation),
@@ -322,9 +318,12 @@ class Environment:
         """Load session state from disk. Returns False if not found."""
         if not session_path.exists():
             return False
+
         try:
             raw = json.loads(session_path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
+            return False
+        if not isinstance(raw, dict):
             return False
 
         self.full_history = [_dict_to_turn(d) for d in raw.get("full_history", [])]
