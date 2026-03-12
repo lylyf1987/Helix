@@ -10,7 +10,7 @@ The LLM is the `Agent`. The `Sandbox` is the equipped computer that lets the age
 
 ## Elegant Agentic Loop
 
-![Agentic System working loop](docs/assets/agentic-system-loop.png)
+![Agentic System working loop](design.png)
 
 The illustration above captures the design used throughout the repo:
 
@@ -18,6 +18,7 @@ The illustration above captures the design used throughout the repo:
 - `Agent` reasons over that state and emits exactly one action.
 - `Action` can `chat`, `think`, `exec`, or `delegate`.
 - `Sandbox` is the agent's computer: it can run bash and python, and it can use skills as installable software.
+- `Environment` is the broader system the sandbox interacts with, including files, storage, APIs, and external services.
 - `Runtime Evidence` flows back into state through stdout/stderr observations.
 - `User` sits outside the loop.
 - `Sub-agent Loop` mirrors the same pattern in an isolated delegated workspace.
