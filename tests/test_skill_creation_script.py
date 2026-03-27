@@ -11,7 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT_PATH = (
     ROOT
-    / "agentic_system"
+    / "helix"
     / "builtin_skills"
     / "all-agents"
     / "skill-creation"

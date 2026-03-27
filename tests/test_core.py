@@ -9,18 +9,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agentic_system.core.state import State, Turn
-from agentic_system.core.action import (
+from helix.core.state import State, Turn
+from helix.core.action import (
     Action,
     parse_action,
     ActionParseError,
     ALLOWED_CORE_ACTIONS,
     ALLOWED_SUB_ACTIONS,
 )
-from agentic_system.core.agent import Agent
-from agentic_system.core.environment import Environment
-from agentic_system.runtime.loop import run_loop
-from agentic_system.runtime.approval import ApprovalPolicy
+from helix.core.agent import Agent
+from helix.core.environment import Environment
+from helix.runtime.loop import run_loop
+from helix.runtime.approval import ApprovalPolicy
 
 
 def test_turn_creation():
@@ -228,7 +228,7 @@ def test_agent_prompt_keeps_summary_separate_from_recent_history():
 
 def test_environment_compaction_error():
     """Compaction raises CompactionError when no model is available."""
-    from agentic_system.core.environment import CompactionError
+    from helix.core.environment import CompactionError
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), token_limit=200, keep_last_k=2)

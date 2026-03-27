@@ -23,7 +23,7 @@ jobs:
 
       - name: Compile check
         run: |
-          python -m py_compile $(find agentic_system -name '*.py' -type f ! -path '*__pycache__*')
+          python -m py_compile $(find helix -name '*.py' -type f ! -path '*__pycache__*')
 
       - name: Unit tests
         run: |

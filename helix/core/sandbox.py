@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from agentic_system.core.state import Turn
+from helix.core.state import Turn
 
 
 # --------------------------------------------------------------------------- #

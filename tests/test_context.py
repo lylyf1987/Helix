@@ -9,11 +9,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agentic_system.providers.ollama import OllamaProvider
-from agentic_system.providers.openai_compat import OpenAICompatProvider
-from agentic_system.core.agent import _load_skills as load_skills
-from agentic_system.core.agent import _load_knowledge_catalog as load_knowledge_catalog
-from agentic_system.core.agent import _build_system_prompt
+from helix.providers.ollama import OllamaProvider
+from helix.providers.openai_compat import OpenAICompatProvider
+from helix.core.agent import _load_skills as load_skills
+from helix.core.agent import _load_knowledge_catalog as load_knowledge_catalog
+from helix.core.agent import _build_system_prompt
 
 
 # =========================================================================== #
@@ -123,7 +123,7 @@ def test_openai_provider_stream_timeout_wrapped_as_runtime_error():
     provider = OpenAICompatProvider()
 
     with patch(
-        "agentic_system.providers.openai_compat.urlopen",
+        "helix.providers.openai_compat.urlopen",
         side_effect=TimeoutError("read timed out"),
     ):
         try:
@@ -139,7 +139,7 @@ def test_ollama_provider_stream_disconnect_wrapped_as_runtime_error():
     provider = OllamaProvider()
 
     with patch(
-        "agentic_system.providers.ollama.urlopen",
+        "helix.providers.ollama.urlopen",
         side_effect=RemoteDisconnected("closed"),
     ):
         try:
@@ -155,7 +155,7 @@ def test_openai_provider_non_stream_invalid_json_wrapped_as_runtime_error():
     provider = OpenAICompatProvider()
 
     with patch(
-        "agentic_system.providers._http.urlopen",
+        "helix.providers._http.urlopen",
         return_value=_MockHTTPResponse(b"not-json"),
     ):
         try:
@@ -229,7 +229,7 @@ def test_skill_loader_empty():
 
 def test_skill_helpers():
     """Test helper parsing used by the skill loader."""
-    from agentic_system.core.agent import _parse_csv, _parse_frontmatter
+    from helix.core.agent import _parse_csv, _parse_frontmatter
 
     assert len(_parse_csv("a, b, c")) == 3
     assert _parse_frontmatter("---\nname: demo\n---\nbody\n") == {"name": "demo"}
@@ -287,7 +287,7 @@ def test_knowledge_loader_empty():
 
 def test_knowledge_helpers():
     """Test helper normalization used by the knowledge loader."""
-    from agentic_system.core.agent import _normalize_tags
+    from helix.core.agent import _normalize_tags
 
     assert len(_normalize_tags("a, b, c")) == 3
     assert _normalize_tags(["a", " ", "b"]) == ["a", "b"]

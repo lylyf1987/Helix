@@ -1,9 +1,9 @@
-# Agentic System
+# Helix
 
-Agentic System is an RL-inspired agent framework built around one small control law:
+Helix is an RL-inspired agent framework built around one small control law:
 
 ```text
-state -> agent -> action -> environment -> observation -> state
+state -> agent -> action -> environment -> state
 ```
 
 The LLM is the `Agent`. The `Sandbox` is the equipped computer that lets the agent take real actions through bash and python. The `Environment` is everything the agent can inspect or affect through its `bash` and `python` hands. `State` is structured context, not a vague chat log. The loop stays grounded by runtime evidence.
@@ -14,7 +14,7 @@ Popular agentic systems have demonstrated that this interaction pattern is power
 
 At the same time, the open community has produced many useful agent design patterns, but not one widely accepted standard architecture.
 
-This project exists to push toward that standardization. Its goal is to express agentic systems in a clean reinforcement-learning-style setting, where `state`, `action`, `environment`, and `observation` are explicit primitives rather than implicit framework conventions. The intent is to make agent design easier to reason about, compare, extend, and teach.
+This project exists to push toward that standardization. Its goal is to express agentic systems in a clean reinforcement-learning-style setting, where `state`, `agent`, `action`, and `environment` are explicit primitives rather than implicit framework conventions. The intent is to make agent design easier to reason about, compare, extend, and teach.
 
 ## Elegant Agentic Loop
 
@@ -22,7 +22,7 @@ This project exists to push toward that standardization. Its goal is to express 
 
 The illustration above captures the design used throughout the repo:
 
-- `State` is built from `workflow_summary`, `workflow_history`, and `latest_context`.
+- `State` is built from `workflow_summary` and `observation`.
 - `Agent` reasons over that state and emits exactly one action.
 - `Action` can `chat`, `think`, `exec`, or `delegate`.
 - `Sandbox` is the agent's computer: it can run bash and python, and it can use skills as installable software.
@@ -37,13 +37,13 @@ The illustration above captures the design used throughout the repo:
 python -m pip install -e .
 ```
 
-This installs the `agentic-system` CLI and its required runtime dependencies, including `prompt_toolkit`.
+This installs the `Helix` CLI and its required runtime dependencies, including `prompt_toolkit`.
 Running the package directly from source without installing dependencies is not a supported setup for the interactive host.
 
 You can also run:
 
 ```bash
-python -m agentic_system
+python -m helix
 ```
 
 ## Quick Start
@@ -54,9 +54,32 @@ You need three things:
 2. an LLM provider
 3. optional tool backends if you want search or image skills
 
-### Default Local Setup: Ollama
+### Full-Featured Example
 
-Start Ollama and pull the default models:
+```bash
+helix \
+  --workspace ../test_workspace \
+  --provider zai \
+  --model glm-5 \
+  --mode auto \
+  --image-analysis-provider ollama \
+  --image-analysis-model glm-ocr \
+  --image-generation-provider ollama \
+  --image-generation-model x/z-image-turbo \
+  --session-id test_session
+```
+
+This launches an agent session with:
+
+- `--workspace` — the project directory the agent works in
+- `--provider` / `--model` — the core LLM that drives reasoning
+- `--mode auto` — the agent executes without asking for approval (`controlled` prompts before each action)
+- `--image-analysis-*` / `--image-generation-*` — models for built-in image skills
+- `--session-id` — a named session so conversation state persists across restarts
+
+### Minimal Local Setup: Ollama
+
+If you want to run everything locally with Ollama:
 
 ```bash
 ollama serve
@@ -65,28 +88,24 @@ ollama pull glm-ocr
 ollama pull x/z-image-turbo
 ```
 
-Then launch the UI:
-
 ```bash
-agentic-system --workspace .
+helix --workspace . --session-id my-session
 ```
 
 ### Other Providers
 
-Use one of these if you do not want Ollama for the core model:
-
 ```bash
 # Z.AI
 export ZAI_API_KEY="your-zai-api-key"
-agentic-system --workspace . --provider zai --model glm-5
+helix --workspace . --provider zai --model glm-5 --session-id my-session
 
 # DeepSeek
 export DEEPSEEK_API_KEY="your-deepseek-api-key"
-agentic-system --workspace . --provider deepseek --model deepseek-chat
+helix --workspace . --provider deepseek --model deepseek-chat --session-id my-session
 
 # LM Studio
 export LMSTUDIO_BASE_URL="http://localhost:1234/v1"   # only if not using the default
-agentic-system --workspace . --provider lmstudio
+helix --workspace . --provider lmstudio --session-id my-session
 ```
 
 ## Sessions
@@ -100,13 +119,13 @@ Examples:
 
 ```bash
 # fresh ephemeral run
-agentic-system --workspace .
+helix --workspace .
 
 # start or resume a named session
-agentic-system --workspace . --session-id design-review-01
+helix --workspace . --session-id design-review-01
 
 # start a different session against the same workspace
-agentic-system --workspace . --session-id bugfix-02
+helix --workspace . --session-id bugfix-02
 ```
 
 ## CLI Essentials
@@ -189,7 +208,7 @@ General API:
 ```bash
 export ZAI_API_KEY="your-zai-api-key"
 export ZAI_BASE_URL="https://api.z.ai/api/paas/v4"
-agentic-system --workspace . --provider zai --model glm-5
+helix --workspace . --provider zai --model glm-5
 ```
 
 Coding API:
@@ -197,7 +216,7 @@ Coding API:
 ```bash
 export ZAI_API_KEY="your-zai-api-key"
 export ZAI_BASE_URL="https://api.z.ai/api/coding/paas/v4"
-agentic-system --workspace . --provider zai --model glm-5
+helix --workspace . --provider zai --model glm-5
 ```
 
 The runtime appends `/chat/completions`, so the coding setup above targets:
@@ -289,7 +308,7 @@ curl 'http://127.0.0.1:8888/search?q=test&format=json'
 If you already have SearXNG elsewhere:
 
 ```bash
-agentic-system --workspace . --searxng-base-url http://your-host:port
+helix --workspace . --searxng-base-url http://your-host:port
 ```
 
 Stop the local container with:
@@ -298,17 +317,6 @@ Stop the local container with:
 docker container stop searxng
 docker container rm searxng
 ```
-
-## How To Think About The System
-
-- The loop is small on purpose.
-- The LLM does not directly change the world; it acts through the sandbox.
-- Memory is layered:
-  - `workflow_summary` for durable compact state
-  - `workflow_history` for recent evidence
-  - workspace files for persistent artifacts
-- Skills are reusable software modules synced into `WORKSPACE/skills/`.
-- Sub-agents use the same loop in isolated child workspaces.
 
 ## Troubleshooting
 
@@ -326,7 +334,7 @@ docker container rm searxng
 ## Repo Layout
 
 ```text
-agentic_system/
+helix/
   core/           -> state, action, agent, environment, sandbox
   runtime/        -> loop, approval, host, cli, display, debug
   providers/      -> ollama and OpenAI-compatible providers

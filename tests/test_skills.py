@@ -4,7 +4,7 @@ Tests that the new framework correctly loads, formats, and injects
 the built-in skills and knowledge into the agent pipeline.
 
 After the skills bundling change, the built-in skills live in
-``agentic_system/builtin_skills/`` and are bootstrapped into the
+``helix/builtin_skills/`` and are bootstrapped into the
 workspace at startup by RuntimeHost. These tests verify both the
 raw loader against the package source and bootstrapped temp workspaces.
 """
@@ -17,21 +17,21 @@ from pathlib import Path
 # Ensure project root is on path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agentic_system.core.agent import _load_skills as load_skills
-from agentic_system.core.agent import _load_knowledge_catalog as load_knowledge_catalog
-from agentic_system.core.agent import _build_system_prompt
-from agentic_system.core.action import Action, parse_action
-from agentic_system.core.environment import Environment
-from agentic_system.core.agent import Agent
-from agentic_system.core.state import Turn
-from agentic_system.runtime.loop import run_loop
-from agentic_system.core.sandbox import sandbox_executor
-from agentic_system.runtime.approval import ApprovalPolicy
-from agentic_system.runtime.host import RuntimeHost
+from helix.core.agent import _load_skills as load_skills
+from helix.core.agent import _load_knowledge_catalog as load_knowledge_catalog
+from helix.core.agent import _build_system_prompt
+from helix.core.action import Action, parse_action
+from helix.core.environment import Environment
+from helix.core.agent import Agent
+from helix.core.state import Turn
+from helix.runtime.loop import run_loop
+from helix.core.sandbox import sandbox_executor
+from helix.runtime.approval import ApprovalPolicy
+from helix.runtime.host import RuntimeHost
 
 # Path to the package source and builtin skills
 WORKSPACE = Path(__file__).resolve().parent.parent
-BUILTIN_SKILLS = WORKSPACE / "agentic_system" / "builtin_skills"
+BUILTIN_SKILLS = WORKSPACE / "helix" / "builtin_skills"
 
 
 def _make_host(workspace: Path, **kwargs) -> RuntimeHost:

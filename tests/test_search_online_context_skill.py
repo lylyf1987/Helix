@@ -9,7 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SKILL_DIR = (
     ROOT
-    / "agentic_system"
+    / "helix"
     / "builtin_skills"
     / "all-agents"
     / "search-online-context"

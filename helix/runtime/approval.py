@@ -4,9 +4,9 @@ import hashlib
 import re
 from typing import Callable, Optional
 
-from agentic_system.core.action import Action
-from agentic_system.core.environment import ApprovalResult, Environment
-from agentic_system.core.state import Turn
+from helix.core.action import Action
+from helix.core.environment import ApprovalResult, Environment
+from helix.core.state import Turn
 
 
 PromptFn = Callable[[str], str]

@@ -5,8 +5,8 @@ and tool configuration from command-line arguments.
 
 Usage::
 
-    python -m agentic_system.runtime.cli --workspace /path/to/workspace --session-id website-01
-    python -m agentic_system.runtime.cli --provider deepseek --mode auto --workspace . --session-id news-site
+    python -m helix.runtime.cli --workspace /path/to/workspace --session-id website-01
+    python -m helix.runtime.cli --provider deepseek --mode auto --workspace . --session-id news-site
 """
 
 from __future__ import annotations

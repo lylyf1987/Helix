@@ -13,14 +13,14 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agentic_system.runtime.host import RuntimeHost
-from agentic_system.providers import create_provider as _create_provider
-from agentic_system.runtime.display import extract_streaming_response
-from agentic_system.runtime.cli import build_parser, main as cli_main
-from agentic_system.core.environment import Environment
-from agentic_system.core.state import Turn
-from agentic_system.providers.ollama import OllamaProvider
-from agentic_system.providers.openai_compat import OpenAICompatProvider
+from helix.runtime.host import RuntimeHost
+from helix.providers import create_provider as _create_provider
+from helix.runtime.display import extract_streaming_response
+from helix.runtime.cli import build_parser, main as cli_main
+from helix.core.environment import Environment
+from helix.core.state import Turn
+from helix.providers.ollama import OllamaProvider
+from helix.providers.openai_compat import OpenAICompatProvider
 
 
 # Path to the real workspace
@@ -179,7 +179,7 @@ def test_host_command_full_history():
             content="Hello",
             timestamp="2026-03-10 00:41:55",
         ))
-        with patch("agentic_system.runtime.host.open_file_in_viewer", return_value=True):
+        with patch("helix.runtime.host.open_file_in_viewer", return_value=True):
             result = host._handle_command("/full_history")
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.full_history.html"
         assert result == f"Opened session view: {path.resolve()}"
@@ -196,7 +196,7 @@ def test_host_command_observation():
     with tempfile.TemporaryDirectory() as td:
         host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._env.record(Turn(role="user", content="Hello"))
-        with patch("agentic_system.runtime.host.open_file_in_viewer", return_value=True):
+        with patch("helix.runtime.host.open_file_in_viewer", return_value=True):
             result = host._handle_command("/observation")
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.observation.html"
         assert result == f"Opened session view: {path.resolve()}"
@@ -213,7 +213,7 @@ def test_host_command_workflow_summary():
     with tempfile.TemporaryDirectory() as td:
         host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._env.workflow_summary = "## Current Status\nWorking"
-        with patch("agentic_system.runtime.host.open_file_in_viewer", return_value=True):
+        with patch("helix.runtime.host.open_file_in_viewer", return_value=True):
             result = host._handle_command("/workflow_summary")
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.workflow_summary.html"
         assert result == f"Opened session view: {path.resolve()}"
@@ -228,7 +228,7 @@ def test_host_command_last_prompt():
     with tempfile.TemporaryDirectory() as td:
         host = RuntimeHost(workspace=Path(td), session_id="debug-01")
         host._agent.last_prompt = "system\n\n<latest_context>\n[user] Hello\n</latest_context>"
-        with patch("agentic_system.runtime.host.open_file_in_viewer", return_value=True):
+        with patch("helix.runtime.host.open_file_in_viewer", return_value=True):
             result = host._handle_command("/last_prompt")
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.last_prompt.html"
         assert result == f"Opened session view: {path.resolve()}"
@@ -245,7 +245,7 @@ def test_host_command_last_prompt_empty():
     """Verify /last_prompt writes a placeholder HTML view before first use."""
     with tempfile.TemporaryDirectory() as td:
         host = RuntimeHost(workspace=Path(td), session_id="debug-01")
-        with patch("agentic_system.runtime.host.open_file_in_viewer", return_value=False):
+        with patch("helix.runtime.host.open_file_in_viewer", return_value=False):
             result = host._handle_command("/last_prompt")
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.last_prompt.html"
         assert result == f"Session view written: {path.resolve()}"

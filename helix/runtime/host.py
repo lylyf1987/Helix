@@ -235,7 +235,7 @@ class RuntimeHost:
     def _bootstrap_skills(self) -> None:
         """Sync built-in skills from the package into the workspace.
 
-        Copies ``agentic_system/builtin_skills/`` into ``{workspace}/skills/``.
+        Copies ``helix/builtin_skills/`` into ``{workspace}/skills/``.
         Each built-in skill directory is replaced on startup so updates to
         the package propagate automatically. User-created skills in the
         workspace are preserved.

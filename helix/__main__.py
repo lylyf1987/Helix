@@ -1,4 +1,4 @@
-"""Python module entrypoint (`python -m agentic_system`)."""
+"""Python module entrypoint (`python -m helix`)."""
 
 from .runtime.cli import main
 

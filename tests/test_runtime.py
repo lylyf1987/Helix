@@ -8,11 +8,11 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agentic_system.core.action import Action
-from agentic_system.core.environment import Environment
-from agentic_system.core.sandbox import sandbox_executor
-from agentic_system.core.state import Turn
-from agentic_system.runtime.approval import ApprovalPolicy
+from helix.core.action import Action
+from helix.core.environment import Environment
+from helix.core.sandbox import sandbox_executor
+from helix.core.state import Turn
+from helix.runtime.approval import ApprovalPolicy
 
 
 def test_sandbox_bash_execution():
