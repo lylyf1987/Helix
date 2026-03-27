@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any, Callable, Optional, Union
-from uuid import uuid4
+
 
 from .action import Action
 from .state import State, Turn, format_turn
@@ -109,7 +109,7 @@ class Environment:
         workspace: Path,
         *,
         mode: str = "controlled",
-        token_limit: int = int(20_000 * 0.75),
+        token_limit: int = int(80_000 * 0.75),
         keep_last_k: int = 10,
         executor: Optional[SandboxExecutor] = None,
     ) -> None:
@@ -258,17 +258,14 @@ class Environment:
     def delegate(self, action: Action) -> str:
         """Spawn a sub-agent to handle a delegated task.
 
-        Creates an isolated child workspace and runs the same universal loop.
+        The sub-agent shares the parent workspace (for skills, knowledge,
+        and sandbox access) but runs in an isolated Environment with a
+        fresh history.
 
         Returns:
             The sub-agent's final report text.
         """
         task = action.payload
-        task_id = uuid4().hex[:12]
-
-        # Isolated child workspace
-        child_workspace = self.workspace / "sub_agents" / task_id
-        child_workspace.mkdir(parents=True, exist_ok=True)
 
         # Import here to avoid circular imports
         from .agent import Agent
@@ -281,7 +278,7 @@ class Environment:
             return "Delegation failed: no model reference available. Call set_model_ref() first."
 
         sub_env = Environment(
-            workspace=child_workspace,
+            workspace=self.workspace,
             mode=self.mode,
             token_limit=self.token_limit,
             keep_last_k=self.keep_last_k,
@@ -292,23 +289,23 @@ class Environment:
         # Sub-agent gets model ref for its own compaction if needed
         sub_env.set_model_ref(self._model_ref)
 
-        # Seed sub-agent with task objective
-        sub_env.record(Turn(role="user", content=task.get("objective", "")))
-
-        # Build sub-agent with role-specific prompt
+        # Seed sub-agent with task objective (from core-agent)
         role = task.get("role", "assistant")
+        objective = task.get("objective", "")
         context = task.get("context", "")
-        sub_prompt = (
-            f"You are a sub-agent with the role: {role}.\n"
-            f"Complete the assigned task and report your results.\n"
-        )
+        seed_content = objective
         if context:
-            sub_prompt += f"\nAdditional context from the core agent:\n{context}\n"
+            seed_content += f"\n\nContext:\n{context}"
+        sub_env.record(Turn(role="core-agent", content=seed_content))
 
+        # Build sub-agent using the same prompt pipeline as core-agent,
+        # but loading the "sub_agent" template instead of "core_agent".
         sub_agent = Agent(
             self._model_ref,
             name="sub-agent",
-            system_prompt=sub_prompt,
+            workspace=self.workspace,
+            role="sub_agent",
+            sub_agent_role=role,
             allowed_actions=ALLOWED_SUB_ACTIONS,
         )
 

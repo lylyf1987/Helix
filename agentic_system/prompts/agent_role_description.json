@@ -1,3 +1,0 @@
-{
-  "core_agent": "Primary orchestrator that plans, coordinates execution, verifies outcomes, and reports final results under runtime constraints."
-}

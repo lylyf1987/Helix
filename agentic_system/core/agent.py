@@ -22,7 +22,14 @@ from ..providers import ModelProvider
 _SKILLS_META = "{{SKILLS_META_FROM_JSON}}"
 _KNOWLEDGE_META = "{{KNOWLEDGE_META_FROM_JSON}}"
 _BUILTIN_LOADERS = "{{BUILTIN_REFERENCE_LOADERS}}"
-_WORKSPACE = "{{RUNTIME_WORKSPACE}}"
+_WORKSPACE_ROOT = "{{WORKSPACE_ROOT}}"
+_SESSION_ID = "{{SESSION_ID}}"
+_SESSION_ROOT = "{{SESSION_ROOT}}"
+_PROJECT_ROOT = "{{PROJECT_ROOT}}"
+_DOCS_ROOT = "{{DOCS_ROOT}}"
+_STATE_ROOT = "{{STATE_ROOT}}"
+_RUNTIME_WORKSPACE = "{{RUNTIME_WORKSPACE}}"
+_SUB_AGENT_ROLE = "{{SUB_AGENT_ROLE}}"
 
 _BUILTIN_REFERENCE_LOADERS = [
     {
@@ -86,7 +93,7 @@ def _parse_csv(value: str) -> list[str]:
     return [item.strip() for item in value.split(",") if item.strip()]
 
 
-def _load_skills(skills_root: Path) -> list[dict[str, Any]]:
+def _load_skills(skills_root: Path, *, allowed_scopes: Optional[set[str]] = None) -> list[dict[str, Any]]:
     skills_root = Path(skills_root)
     if not skills_root.exists():
         return []
@@ -97,6 +104,8 @@ def _load_skills(skills_root: Path) -> list[dict[str, Any]]:
         if not scope_dir.is_dir():
             continue
         scope = scope_dir.name
+        if allowed_scopes is not None and scope not in allowed_scopes:
+            continue
         for skill_dir in sorted(scope_dir.iterdir()):
             if not skill_dir.is_dir():
                 continue
@@ -141,6 +150,12 @@ def _normalize_tags(value: Any) -> list[str]:
     return []
 
 
+def _title_from_path(path_text: str) -> str:
+    path = Path(str(path_text).strip())
+    stem = path.stem.strip()
+    return stem or "untitled"
+
+
 def _load_knowledge_catalog(knowledge_root: Path, *, limit: int = 80) -> list[dict[str, Any]]:
     catalog_path = Path(knowledge_root) / "index" / "catalog.json"
     if not catalog_path.exists():
@@ -156,25 +171,49 @@ def _load_knowledge_catalog(knowledge_root: Path, *, limit: int = 80) -> list[di
     for item in raw:
         if not isinstance(item, dict):
             continue
-        doc_id = str(item.get("doc_id", "")).strip()
-        if not doc_id:
+        path = str(item.get("path", "")).strip()
+        legacy_doc_id = str(item.get("doc_id", "")).strip()
+        if not path and legacy_doc_id:
+            path = f"knowledge/docs/{legacy_doc_id}.md"
+        if not path:
             continue
+        title = str(item.get("title", "")).strip() or _title_from_path(path)
         rows.append({
-            "doc_id": doc_id,
-            "title": str(item.get("title", "")).strip() or doc_id,
-            "path": str(item.get("path", "")).strip() or f"knowledge/docs/{doc_id}.md",
+            "title": title,
+            "summary": str(item.get("summary", "")).strip(),
             "tags": _normalize_tags(item.get("tags", [])),
-            "quality_score": float(item.get("quality_score", 0.0) or 0.0),
-            "confidence": float(item.get("confidence", 0.0) or 0.0),
+            "path": path,
         })
 
-    rows.sort(key=lambda r: r["doc_id"])
+    rows.sort(key=lambda r: (r["title"].lower(), r["path"]))
     return rows[:max(1, limit)]
 
 
-def _build_system_prompt(workspace_path: Path, role: str = "core_agent") -> str:
-    """Build the complete system prompt from templates + runtime metadata."""
+def _build_system_prompt(
+    workspace_path: Path,
+    role: str = "core_agent",
+    *,
+    session_id: str = "none",
+    session_root: Optional[Path] = None,
+    project_root: Optional[Path] = None,
+    docs_root: Optional[Path] = None,
+    state_root: Optional[Path] = None,
+    sub_agent_role: str = "",
+) -> str:
+    """Build the complete system prompt from templates + runtime metadata.
+
+    Works for both core-agents (role="core_agent") and sub-agents
+    (role="sub_agent").  The *role* selects which template to load
+    from ``agent_system_prompt.json``.  Sub-agent-specific placeholders
+    (``{{SUB_AGENT_ROLE}}``, ``{{SUB_AGENT_CONTEXT}}``) are filled when
+    the corresponding arguments are provided.
+    """
     workspace = Path(workspace_path).expanduser().resolve()
+    session_label = str(session_id).strip() or "none"
+    session_dir = Path(session_root).expanduser().resolve() if session_root is not None else workspace / "sessions" / session_label
+    project_dir = Path(project_root).expanduser().resolve() if project_root is not None else session_dir / "project"
+    docs_dir = Path(docs_root).expanduser().resolve() if docs_root is not None else session_dir / "docs"
+    state_dir = Path(state_root).expanduser().resolve() if state_root is not None else session_dir / ".state"
     
     # 1. Load template
     templates = _load_sys_prompt(_PACKAGE_PROMPTS / "agent_system_prompt.json")
@@ -182,8 +221,9 @@ def _build_system_prompt(workspace_path: Path, role: str = "core_agent") -> str:
     if not template:
         return ""
 
-    # 2. Load skills
-    skills = _load_skills(workspace / "skills")
+    # 2. Load skills (sub-agents only see "all-agents" scope)
+    skill_scopes = {"all-agents"} if role == "sub_agent" else None
+    skills = _load_skills(workspace / "skills", allowed_scopes=skill_scopes)
     skills_text = "- (no skills found)" if not skills else "\n".join(
         "- " + json.dumps(row, ensure_ascii=True) for row in skills
     )
@@ -207,8 +247,24 @@ def _build_system_prompt(workspace_path: Path, role: str = "core_agent") -> str:
         prompt = prompt.replace(_KNOWLEDGE_META, knowledge_text)
     if _BUILTIN_LOADERS in prompt:
         prompt = prompt.replace(_BUILTIN_LOADERS, loaders_text)
-    if _WORKSPACE in prompt:
-        prompt = prompt.replace(_WORKSPACE, str(workspace))
+    if _WORKSPACE_ROOT in prompt:
+        prompt = prompt.replace(_WORKSPACE_ROOT, str(workspace))
+    if _SESSION_ID in prompt:
+        prompt = prompt.replace(_SESSION_ID, session_label)
+    if _SESSION_ROOT in prompt:
+        prompt = prompt.replace(_SESSION_ROOT, str(session_dir))
+    if _PROJECT_ROOT in prompt:
+        prompt = prompt.replace(_PROJECT_ROOT, str(project_dir))
+    if _DOCS_ROOT in prompt:
+        prompt = prompt.replace(_DOCS_ROOT, str(docs_dir))
+    if _STATE_ROOT in prompt:
+        prompt = prompt.replace(_STATE_ROOT, str(state_dir))
+    if _RUNTIME_WORKSPACE in prompt:
+        prompt = prompt.replace(_RUNTIME_WORKSPACE, str(workspace))
+
+    # Sub-agent-specific placeholders
+    if _SUB_AGENT_ROLE in prompt:
+        prompt = prompt.replace(_SUB_AGENT_ROLE, sub_agent_role)
 
     return prompt
 
@@ -249,6 +305,13 @@ class Agent:
         *,
         name: str = "core-agent",
         workspace: Optional[Path] = None,
+        role: str = "core_agent",
+        session_id: str = "none",
+        session_root: Optional[Path] = None,
+        project_root: Optional[Path] = None,
+        docs_root: Optional[Path] = None,
+        state_root: Optional[Path] = None,
+        sub_agent_role: str = "",
         system_prompt: Optional[str] = None,
         allowed_actions: frozenset[str] = ALLOWED_CORE_ACTIONS,
     ) -> None:
@@ -263,7 +326,16 @@ class Agent:
         self.last_prompt = ""
 
         if workspace is not None:
-            self.system_prompt = _build_system_prompt(workspace, "core_agent")
+            self.system_prompt = _build_system_prompt(
+                workspace,
+                role,
+                session_id=session_id,
+                session_root=session_root,
+                project_root=project_root,
+                docs_root=docs_root,
+                state_root=state_root,
+                sub_agent_role=sub_agent_role,
+            )
         else:
             self.system_prompt = system_prompt  # type: ignore[assignment]
 
@@ -321,6 +393,10 @@ class Agent:
                 )
                 sections.append(
                     f"<workflow_history>\n{history_text}\n</workflow_history>"
+                )
+            else:
+                sections.append(
+                    "<workflow_history>\n<empty>\n</workflow_history>"
                 )
 
             latest_text = format_turn(latest_turn)

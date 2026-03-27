@@ -160,16 +160,14 @@ def test_delegate_basic():
         assert "chat" in result.lower() or len(result) > 0
         assert model.call_count >= 1
 
-        # Child workspace should exist
+        # No child workspace should be created (sub-agent shares parent workspace)
         sub_agents_dir = Path(td) / "sub_agents"
-        assert sub_agents_dir.exists()
-        child_dirs = list(sub_agents_dir.iterdir())
-        assert len(child_dirs) == 1
+        assert not sub_agents_dir.exists()
         print("  Delegate basic OK")
 
 
-def test_delegate_child_workspace_isolation():
-    """Verify sub-agent gets an isolated child workspace."""
+def test_delegate_shares_parent_workspace():
+    """Verify sub-agent shares the parent workspace (no child dir created)."""
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
         env = Environment(workspace=workspace, mode="auto", executor=sandbox_executor)
@@ -181,17 +179,13 @@ def test_delegate_child_workspace_isolation():
         action = Action(
             response="Delegating...",
             type="delegate",
-            payload={"role": "researcher", "objective": "test isolation"},
+            payload={"role": "researcher", "objective": "test workspace sharing"},
         )
         env.delegate(action)
 
-        # Verify child workspace is under sub_agents/
-        sub_agents_dir = workspace / "sub_agents"
-        assert sub_agents_dir.exists()
-        children = list(sub_agents_dir.iterdir())
-        assert len(children) == 1
-        assert children[0].is_dir()
-        print("  Delegate child workspace isolation OK")
+        # No sub_agents directory should be created
+        assert not (workspace / "sub_agents").exists()
+        print("  Delegate shares parent workspace OK")
 
 
 def test_delegate_sub_agent_cannot_delegate():
@@ -294,7 +288,7 @@ if __name__ == "__main__":
 
     print("\n=== Basic Delegation ===")
     test_delegate_basic()
-    test_delegate_child_workspace_isolation()
+    test_delegate_shares_parent_workspace()
 
     print("\n=== Full Delegation Loop ===")
     test_full_delegation_loop()
