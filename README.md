@@ -48,11 +48,12 @@ python -m helix
 
 ## Quick Start
 
-You need three things:
+You need four things:
 
 1. a workspace directory
-2. an LLM provider
-3. optional tool backends if you want search or image skills
+2. a session id
+3. an LLM provider
+4. optional tool backends if you want search or image skills
 
 ### Full-Featured Example
 
@@ -75,7 +76,7 @@ This launches an agent session with:
 - `--provider` / `--model` — the core LLM that drives reasoning
 - `--mode auto` — the agent executes without asking for approval (`controlled` prompts before each action)
 - `--image-analysis-*` / `--image-generation-*` — models for built-in image skills
-- `--session-id` — a named session so conversation state persists across restarts
+- `--session-id` — required; names the session so conversation state persists across restarts
 
 ### Minimal Local Setup: Ollama
 
@@ -112,15 +113,12 @@ helix --workspace . --provider lmstudio --session-id my-session
 
 - `workspace` is the shared project and artifact directory.
 - `session_id` is the conversation memory key.
-- without `--session-id`, the run is ephemeral
-- with `--session-id`, state is saved to `WORKSPACE/.sessions/<session_id>.json`
+- `--session-id` is required by the current CLI.
+- state is saved to `WORKSPACE/sessions/<session_id>/.state/session.json`
 
 Examples:
 
 ```bash
-# fresh ephemeral run
-helix --workspace .
-
 # start or resume a named session
 helix --workspace . --session-id design-review-01
 
@@ -133,7 +131,7 @@ helix --workspace . --session-id bugfix-02
 | Argument | Default | Purpose |
 |---|---|---|
 | `--workspace` | required | workspace root |
-| `--session-id` | none | persistent conversation key |
+| `--session-id` | required | persistent conversation key |
 | `--provider` | `ollama` | core model provider |
 | `--mode` | `controlled` | `controlled` asks before exec, `auto` does not |
 | `--model` | provider default | override the provider's default model |
@@ -208,7 +206,7 @@ General API:
 ```bash
 export ZAI_API_KEY="your-zai-api-key"
 export ZAI_BASE_URL="https://api.z.ai/api/paas/v4"
-helix --workspace . --provider zai --model glm-5
+helix --workspace . --provider zai --model glm-5 --session-id my-session
 ```
 
 Coding API:
@@ -216,7 +214,7 @@ Coding API:
 ```bash
 export ZAI_API_KEY="your-zai-api-key"
 export ZAI_BASE_URL="https://api.z.ai/api/coding/paas/v4"
-helix --workspace . --provider zai --model glm-5
+helix --workspace . --provider zai --model glm-5 --session-id my-session
 ```
 
 The runtime appends `/chat/completions`, so the coding setup above targets:
@@ -235,7 +233,7 @@ https://api.z.ai/api/coding/paas/v4/chat/completions
 - `/last_prompt` — open the exact last prompt sent to the model
 - `/exit` — quit
 
-The inspection commands require `--session-id`.
+The inspection commands operate on the active named session.
 
 ## Optional Tool Backends
 
@@ -308,7 +306,7 @@ curl 'http://127.0.0.1:8888/search?q=test&format=json'
 If you already have SearXNG elsewhere:
 
 ```bash
-helix --workspace . --searxng-base-url http://your-host:port
+helix --workspace . --session-id my-session --searxng-base-url http://your-host:port
 ```
 
 Stop the local container with:

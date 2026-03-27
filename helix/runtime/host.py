@@ -147,7 +147,6 @@ class RuntimeHost:
         for path in (self.session_root, self.project_root, self.docs_root, self.state_root):
             path.mkdir(parents=True, exist_ok=True)
         self.session_path = (self.state_root / "session.json").resolve()
-        self._legacy_session_path = (self.workspace / ".sessions" / f"{self.session_id}.json").resolve()
         self._session_loaded = False
         self.provider_name = provider
         self.mode = mode
@@ -190,8 +189,6 @@ class RuntimeHost:
         raw_session = None
         if self._env.load_session(self.session_path):
             raw_session = _read_session_payload(self.session_path) or {}
-        elif self._legacy_session_path.exists() and self._env.load_session(self._legacy_session_path):
-            raw_session = _read_session_payload(self._legacy_session_path) or {}
         if raw_session is not None:
             self._agent.last_prompt = str(raw_session.get("last_prompt", "") or "")
             self._session_loaded = True

@@ -113,20 +113,19 @@ def test_host_init_controlled():
 
 
 def test_host_init_with_session_id_loads_existing_state():
-    """Verify RuntimeHost resumes a named session when it already exists."""
+    """Verify RuntimeHost resumes a named session from the current session path."""
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
-        legacy_session_path = workspace / ".sessions" / "review-01.json"
         session_path = workspace / "sessions" / "review-01" / ".state" / "session.json"
 
         env = Environment(workspace=workspace)
         env.record(Turn(role="user", content="Previous request"))
         env.record(Turn(role="core-agent", content="Previous response"))
         env.workflow_summary = "Prior summary"
-        env.save_session(legacy_session_path)
-        raw = json.loads(legacy_session_path.read_text(encoding="utf-8"))
+        env.save_session(session_path)
+        raw = json.loads(session_path.read_text(encoding="utf-8"))
         raw["last_prompt"] = "Prior prompt"
-        legacy_session_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
+        session_path.write_text(json.dumps(raw, indent=2), encoding="utf-8")
 
         host = RuntimeHost(
             workspace=workspace,
