@@ -19,6 +19,7 @@ from helix.core.action import (
 )
 from helix.core.agent import Agent
 from helix.core.environment import Environment
+from helix.runtime.display import TURN_SEPARATOR
 from helix.runtime.loop import run_loop
 from helix.runtime.approval import ApprovalPolicy
 
@@ -293,6 +294,7 @@ def test_run_loop_compaction_failure_is_ui_only():
         assert "compaction failed" in result.lower()
         assert compactor.calls == 3
         assert "runtime> Session paused:" in captured.getvalue()
+        assert TURN_SEPARATOR in captured.getvalue()
         assert len(env.full_history) == 2
         assert len(env.observation) == 2
         assert all("compaction failed" not in t.content.lower() for t in env.full_history)

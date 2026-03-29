@@ -32,7 +32,7 @@ from ..core.sandbox import sandbox_executor
 from ..providers import create_provider
 from .loop import run_loop
 from .approval import ApprovalPolicy
-from .display import StreamingDisplay
+from .display import StreamingDisplay, write_separator
 from .debug import render_session_view_html, open_file_in_viewer
 
 
@@ -369,6 +369,7 @@ class RuntimeHost:
         except RuntimeError as exc:
             message = f"Agent error: {exc}"
             print(f"\nruntime> {message}")
+            write_separator(sys.stdout)
             self._env.record(Turn(role="runtime", content=message))
         finally:
             # Persist state after each interaction

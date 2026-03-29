@@ -3,6 +3,7 @@
 import builtins
 import sys
 import tempfile
+from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +14,7 @@ from helix.core.environment import Environment
 from helix.core.sandbox import sandbox_executor
 from helix.core.state import Turn
 from helix.runtime.approval import ApprovalPolicy
+from helix.runtime.display import TURN_SEPARATOR
 
 
 def test_sandbox_bash_execution():
@@ -200,6 +202,27 @@ def test_approval_policy_keyboard_interrupt_cancels():
     print("  Approval keyboard interrupt cancels OK")
 
 
+def test_approval_prompt_prints_separator_before_input():
+    captured = StringIO()
+
+    def fake_prompt(prompt_text: str) -> str:
+        print(prompt_text, end="")
+        return "y"
+
+    policy = ApprovalPolicy(mode="controlled", prompt=fake_prompt)
+    env = Environment(workspace=Path("."))
+    action = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo x"})
+
+    with patch("sys.stdout", captured):
+        assert policy(env, action) is True
+
+    output = captured.getvalue()
+    assert "runtime> Action requires approval:" in output
+    assert TURN_SEPARATOR in output
+    assert f"{TURN_SEPARATOR}\n> " in output
+    print("  Approval separator before input OK")
+
+
 def test_approval_policy_non_exec_passthrough():
     policy = ApprovalPolicy(mode="controlled")
     env = Environment(workspace=Path("."))
@@ -245,6 +268,7 @@ if __name__ == "__main__":
     test_approval_policy_controlled_deny()
     test_approval_policy_uses_injected_prompt_instead_of_raw_input()
     test_approval_policy_keyboard_interrupt_cancels()
+    test_approval_prompt_prints_separator_before_input()
     test_approval_policy_non_exec_passthrough()
 
     print("\n=== Environment Integration ===")

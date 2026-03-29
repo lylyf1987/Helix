@@ -14,10 +14,11 @@ from ..core.action import Action, ActionParseError
 from ..core.agent import Agent
 from ..core.environment import Environment, CompactionError, ExecutionInterrupted
 from ..core.state import Turn
+from .display import write_separator
 
 
-DEFAULT_MAX_TURNS = 60
-DEFAULT_MAX_RETRIES = 3
+DEFAULT_MAX_TURNS = 9999999
+DEFAULT_MAX_RETRIES = 10
 
 
 def run_loop(
@@ -63,7 +64,7 @@ def run_loop(
                 f"Session paused: context window is full and compaction failed ({exc}). "
                 f"Please start a new session or reduce context."
             )
-            _print(output, f"\nruntime> {msg}\n")
+            _print(output, f"\nruntime> {msg}\n", add_separator=True)
             return msg
 
         # 2. Agent decides
@@ -89,7 +90,7 @@ def run_loop(
             ))
             if consecutive_failures >= max_retries:
                 msg = "Loop ended: too many consecutive parse failures."
-                _print(output, f"\nruntime> {msg}\n")
+                _print(output, f"\nruntime> {msg}\n", add_separator=True)
                 return msg
             continue
 
@@ -117,17 +118,25 @@ def run_loop(
             pass
 
         elif action.type == "exec":
-            _print(output, f"runtime> Executing: {action.payload.get('job_name', 'unnamed')}...\n")
+            _print(
+                output,
+                f"runtime> Executing: {action.payload.get('job_name', 'unnamed')}...\n",
+                add_separator=True,
+            )
             try:
                 observation = env.execute(action)
             except ExecutionInterrupted as exc:
                 env.record(exc.observation)
-                _print(output, f"runtime> {exc.observation.content}\n")
+                _print(output, f"runtime> {exc.observation.content}\n", add_separator=True)
                 return exc.observation.content
             env.record(observation)
 
         elif action.type == "delegate":
-            _print(output, f"runtime> Delegating to sub-agent: {action.payload.get('role', 'unknown')}...\n")
+            _print(
+                output,
+                f"runtime> Delegating to sub-agent: {action.payload.get('role', 'unknown')}...\n",
+                add_separator=True,
+            )
             result = env.delegate(action)
             env.record(Turn(
                 role="sub-agent",
@@ -136,11 +145,11 @@ def run_loop(
 
     # Turn limit reached
     msg = "Loop ended: maximum turns reached."
-    _print(output, f"\nruntime> {msg}\n")
+    _print(output, f"\nruntime> {msg}\n", add_separator=True)
     return msg
 
 # --------------------------------------------------------------------------- #
-def _print(output: TextIO, text: str = "", *, action: Action | None = None) -> None:
+def _print(output: TextIO, text: str = "", *, action: Action | None = None, add_separator: bool = False) -> None:
     """Print to the output stream immediately (unbuffered).
 
     Action metadata is not printed to the requester-facing UI.
@@ -150,6 +159,8 @@ def _print(output: TextIO, text: str = "", *, action: Action | None = None) -> N
         pass
     elif text:
         output.write(text)
+        if add_separator:
+            write_separator(output)
         output.flush()
 
 # --------------------------------------------------------------------------- #

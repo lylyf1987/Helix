@@ -15,7 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from helix.runtime.host import RuntimeHost
 from helix.providers import create_provider as _create_provider
-from helix.runtime.display import extract_streaming_response
+from helix.runtime.display import TURN_SEPARATOR, extract_streaming_response
 from helix.runtime.cli import build_parser, main as cli_main
 from helix.core.environment import Environment
 from helix.core.state import Turn
@@ -293,12 +293,18 @@ def test_host_process_message():
         host = _make_host(Path(td))
 
         # Mock the model to return a simple chat response
-        mock_generate = MagicMock(return_value=(
-            '<output>'
-            '{"response": "Hello from the agent!", '
-            '"action": "chat", "action_input": {}}'
-            '</output>'
-        ))
+        def mock_generate(prompt, *, stream=False, chunk_callback=None):
+            if stream and chunk_callback is not None:
+                for piece in ('<output>{"response": "Hello ', 'from the agent!", '):
+                    chunk_callback(piece)
+            return (
+                '<output>'
+                '{"response": "Hello from the agent!", '
+                '"action": "chat", "action_input": {}}'
+                '</output>'
+            )
+
+        mock_generate = MagicMock(side_effect=mock_generate)
         host._model.generate = mock_generate
 
         # Capture stdout
@@ -319,6 +325,8 @@ def test_host_process_message():
         assert "[next_action] chat" in agent_turns[0].content
 
         # Requester-facing UI should not include action metadata
+        assert "Hello agent!" not in output
+        assert f"core-agent> Hello from the agent!\n{TURN_SEPARATOR}" in output
         assert "[next_action]" not in output
         assert "[action_input]" not in output
 
@@ -356,16 +364,18 @@ def test_host_process_message_saves_named_session():
         assert raw["last_prompt"]
         print("  Named session persistence OK")
 
-
 def test_host_process_exec():
     """Test that _process_message handles exec actions correctly."""
     with tempfile.TemporaryDirectory() as td:
         host = _make_host(Path(td), mode="auto")
 
         call_count = [0]
-        def mock_generate(prompt, **kwargs):
+        def mock_generate(prompt, *, stream=False, chunk_callback=None):
             call_count[0] += 1
             if call_count[0] == 1:
+                if stream and chunk_callback is not None:
+                    for piece in ('<output>{"response": "Let ', 'me check.", '):
+                        chunk_callback(piece)
                 return (
                     '<output>'
                     '{"response": "Let me check.", '
@@ -374,6 +384,9 @@ def test_host_process_exec():
                     '"script": "echo test-output"}}'
                     '</output>'
                 )
+            if stream and chunk_callback is not None:
+                for piece in ('<output>{"response": "Do', 'ne!", '):
+                    chunk_callback(piece)
             return (
                 '<output>'
                 '{"response": "Done!", "action": "chat", "action_input": {}}'
@@ -385,12 +398,16 @@ def test_host_process_exec():
         captured = StringIO()
         with patch("sys.stdout", captured):
             host._process_message("Run a test")
+        output = captured.getvalue()
 
         # Should have user, agent (exec), runtime (result), agent (chat)
         assert len(host._env.full_history) >= 4
         runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
         assert len(runtime_turns) == 1
         assert "test-output" in runtime_turns[0].content
+        assert "Run a test" not in output
+        assert f"core-agent> Let me check.\n{TURN_SEPARATOR}" in output
+        assert f"core-agent> Done!\n{TURN_SEPARATOR}" in output
 
         print("  Exec processing OK")
 
@@ -410,7 +427,8 @@ def test_host_process_message_runtime_error():
             host._process_message("Who are you?")
 
         output = captured.getvalue()
-        assert "runtime> Agent error: Missing API key for provider 'zai'" in output
+        assert f"runtime> Agent error: Missing API key for provider 'zai'" in output
+        assert TURN_SEPARATOR in output
         runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
         assert len(runtime_turns) == 1
         assert "Missing API key for provider 'zai'" in runtime_turns[0].content
@@ -458,6 +476,7 @@ def test_host_process_message_discards_parse_failed_preview():
         output = captured.getvalue()
         assert "Discard this preview" not in output
         assert "Keep this final answer" in output
+        assert TURN_SEPARATOR in output
 
         runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
         assert len(runtime_turns) == 1

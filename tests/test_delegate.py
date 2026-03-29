@@ -7,6 +7,7 @@ flows back into parent history.
 
 import sys
 import tempfile
+from io import StringIO
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -18,6 +19,7 @@ from helix.runtime.loop import run_loop
 from helix.core.state import Turn
 from helix.core.sandbox import sandbox_executor
 from helix.runtime.approval import ApprovalPolicy
+from helix.runtime.display import TURN_SEPARATOR
 
 
 # =========================================================================== #
@@ -211,11 +213,15 @@ def test_full_delegation_loop():
             system_prompt="You are the core agent.",
         )
 
-        result = run_loop(agent, env, output=sys.stderr)
+        output = StringIO()
+        result = run_loop(agent, env, output=output)
 
         # Should get the final answer
         assert "Guido" in result
         assert len(model.calls) >= 3  # core(delegate) + sub(chat) + core(chat)
+        assert "runtime> Delegating to sub-agent" in output.getvalue()
+        assert TURN_SEPARATOR in output.getvalue()
+        assert "sub-agent>" not in output.getvalue()
 
         # Verify sub_agent turn appears in history
         sub_turns = [t for t in env.full_history if t.role == "sub-agent"]

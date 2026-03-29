@@ -6,7 +6,6 @@ import re
 import sys
 from typing import TextIO, Optional
 
-
 _JSON_ESCAPE_MAP = {
     '"': '"',
     "\\": "\\",
@@ -17,6 +16,15 @@ _JSON_ESCAPE_MAP = {
     "r": "\r",
     "t": "\t",
 }
+
+TURN_SEPARATOR = "-" * 60
+
+
+def write_separator(output: Optional[TextIO] = None) -> None:
+    """Write the standard requester-facing separator line."""
+    stream = output if output is not None else sys.stdout
+    stream.write(f"{TURN_SEPARATOR}\n")
+    stream.flush()
 
 
 def extract_streaming_response(partial_text: str) -> Optional[str]:
@@ -106,7 +114,7 @@ class StreamingDisplay:
             return
         output = self._output if self._output is not None else sys.stdout
         output.write(f"\n{self._current_name}> {self._response_text}\n")
-        output.flush()
+        write_separator(output)
 
     def discard(self) -> None:
         """Drop any buffered response from a failed parse attempt."""

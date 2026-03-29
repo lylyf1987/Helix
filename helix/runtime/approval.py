@@ -7,6 +7,7 @@ from typing import Callable, Optional
 from helix.core.action import Action
 from helix.core.environment import ApprovalResult, Environment
 from helix.core.state import Turn
+from helix.runtime.display import write_separator
 
 
 PromptFn = Callable[[str], str]
@@ -91,6 +92,7 @@ class ApprovalPolicy:
         print("  s: allow same exact exec for this session")
         print("  p: allow same script pattern for this session")
         print("  k: allow same script_path for this session (ignore args)")
+        write_separator()
 
         try:
             choice = self._prompt("> ").strip().lower()
@@ -119,6 +121,7 @@ class ApprovalPolicy:
                 return True
             else:
                 print("runtime> 'k' requires a script_path. Denied.")
+                write_separator()
                 return Turn(
                     role="runtime",
                     content="Execution denied by requester during approval prompt.",
