@@ -26,9 +26,10 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
 
 from ..core.agent import Agent
+from ..core.docker_sandbox import DockerSandboxExecutor, docker_is_available
 from ..core.environment import Environment
 from ..core.state import Turn
-from ..core.sandbox import sandbox_executor
+from ..core.sandbox import sandbox_executor as host_sandbox_executor
 from ..providers import create_provider
 from .loop import run_loop
 from .approval import ApprovalPolicy
@@ -102,6 +103,7 @@ class RuntimeHost:
         session_id: Session identifier used to resume/persist project state.
         provider: LLM provider name ("ollama", "deepseek", "lmstudio", "zai", etc.).
         mode: Execution mode ("auto" or "controlled").
+        sandbox_backend: Exec backend selection ("auto", "docker", or "host").
         model: Model name override (uses provider defaults if not specified).
         image_analysis_provider: Override for IMAGE_ANALYSIS_PROVIDER.
         image_analysis_model: Override for IMAGE_ANALYSIS_MODEL.
@@ -128,6 +130,7 @@ class RuntimeHost:
         session_id: Optional[str] = None,
         provider: str = "ollama",
         mode: str = "controlled",
+        sandbox_backend: str = "auto",
         model: Optional[str] = None,
         image_analysis_provider: Optional[str] = None,
         image_analysis_model: Optional[str] = None,
@@ -150,6 +153,9 @@ class RuntimeHost:
         self._session_loaded = False
         self.provider_name = provider
         self.mode = mode
+        self.requested_sandbox_backend = str(sandbox_backend).strip().lower() or "auto"
+        self.resolved_sandbox_backend = "host"
+        self._sandbox_status_fields: dict[str, str] = {}
         self._prompt_session = self._build_prompt_session()
 
         # 1. Bootstrap built-in skills into workspace
@@ -180,11 +186,21 @@ class RuntimeHost:
             state_root=self.state_root,
         )
 
+        sandbox_executor = self._resolve_sandbox_executor(
+            sandbox_backend=self.requested_sandbox_backend,
+            searxng_base_url=searxng_base_url,
+        )
+
         # Create environment with sandbox executor
         self._env = Environment(
             workspace=self.workspace,
             executor=sandbox_executor,
             mode=mode,
+        )
+        self._env.approval_profile = getattr(
+            sandbox_executor,
+            "approval_profile",
+            "host-subprocess-v1",
         )
         raw_session = None
         if self._env.load_session(self.session_path):
@@ -313,6 +329,7 @@ class RuntimeHost:
         print(f"Workspace: {self.workspace}")
         state = "resumed" if self._session_loaded else "new"
         print(f"Session: {self.session_id} ({state})")
+        print(f"Sandbox: {self.resolved_sandbox_backend}")
         print("Type /help for commands. Type /exit to quit.")
         print("Multiline: Enter adds lines, Ctrl+D submits, Ctrl+C cancels.\n")
 
@@ -396,9 +413,10 @@ class RuntimeHost:
 
     def _status_text(self) -> str:
         """Build session status overview."""
-        return "\n".join([
+        lines = [
             f"provider={self.provider_name}",
             f"mode={self.mode}",
+            f"sandbox_backend={self.resolved_sandbox_backend}",
             f"workspace={self.workspace}",
             f"session_id={self.session_id}",
             f"session_state={self._session_state()}",
@@ -414,7 +432,50 @@ class RuntimeHost:
             f"full_history_turns={len(self._env.full_history)}",
             f"observation_turns={len(self._env.observation)}",
             f"system_prompt_length={len(self._agent.system_prompt)} chars",
-        ])
+        ]
+        for key, value in self._sandbox_status_fields.items():
+            if key == "sandbox_backend":
+                continue
+            lines.append(f"{key}={value}")
+        return "\n".join(lines)
+
+    def _resolve_sandbox_executor(
+        self,
+        *,
+        sandbox_backend: str,
+        searxng_base_url: Optional[str],
+    ) -> object:
+        """Resolve the configured sandbox backend into a callable executor."""
+        backend = str(sandbox_backend).strip().lower() or "auto"
+        if backend == "host":
+            self.resolved_sandbox_backend = "host"
+            self._sandbox_status_fields = {
+                "sandbox_profile": "host-subprocess-v1",
+            }
+            return host_sandbox_executor
+
+        if backend in {"auto", "docker"}:
+            available, reason = docker_is_available()
+            if available:
+                executor = DockerSandboxExecutor(
+                    self.workspace,
+                    searxng_base_url=searxng_base_url,
+                )
+                self.resolved_sandbox_backend = "docker" if backend == "docker" else "docker(auto)"
+                self._sandbox_status_fields = executor.status_fields()
+                for key, value in executor.tool_environment().items():
+                    os.environ[key] = value
+                return executor
+            if backend == "docker":
+                raise ValueError(f"Docker sandbox requested but unavailable: {reason}")
+            self.resolved_sandbox_backend = "host(auto-fallback)"
+            self._sandbox_status_fields = {
+                "sandbox_profile": "host-subprocess-v1",
+                "sandbox_fallback_reason": reason,
+            }
+            return host_sandbox_executor
+
+        raise ValueError(f"Unsupported sandbox_backend: {sandbox_backend}")
 
     def _shutdown(self) -> None:
         """Persist state before exit."""

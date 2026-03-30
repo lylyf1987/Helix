@@ -5,6 +5,7 @@ and the full message processing pipeline (without a real LLM).
 """
 
 import json
+import os
 import sys
 import tempfile
 from io import StringIO
@@ -28,7 +29,7 @@ WORKSPACE = Path(__file__).resolve().parent.parent
 
 
 def _make_host(workspace: Path, **kwargs) -> RuntimeHost:
-    params = {"workspace": workspace, "session_id": "session-01"}
+    params = {"workspace": workspace, "session_id": "session-01", "sandbox_backend": "host"}
     params.update(kwargs)
     return RuntimeHost(**params)
 
@@ -141,6 +142,56 @@ def test_host_init_with_session_id_loads_existing_state():
         assert host._env.workflow_summary == "Prior summary"
         assert host._agent.last_prompt == "Prior prompt"
         print("  RuntimeHost named session resume OK")
+
+
+def test_host_auto_prefers_docker_when_available():
+    """Verify auto backend selects Docker when Docker is available."""
+    class FakeDockerExecutor:
+        approval_profile = "docker-online-rw-workspace-v1:test"
+
+        def __init__(self, workspace: Path, *, searxng_base_url: str | None = None):
+            self.workspace = workspace
+            self.searxng_base_url = searxng_base_url
+
+        def __call__(self, payload, workspace):
+            return Turn(role="runtime", content="fake")
+
+        def status_fields(self) -> dict[str, str]:
+            return {"sandbox_backend": "docker", "docker_image": "fake-image"}
+
+        def tool_environment(self) -> dict[str, str]:
+            return {"SEARXNG_BASE_URL": "http://fake-searxng:8080"}
+
+    with tempfile.TemporaryDirectory() as td:
+        with patch("helix.runtime.host.docker_is_available", return_value=(True, "")):
+            with patch("helix.runtime.host.DockerSandboxExecutor", FakeDockerExecutor):
+                host = RuntimeHost(
+                    workspace=Path(td),
+                    session_id="session-01",
+                    sandbox_backend="auto",
+                )
+        assert host.resolved_sandbox_backend == "docker(auto)"
+        assert host._env.approval_profile == "docker-online-rw-workspace-v1:test"
+        assert os.environ["SEARXNG_BASE_URL"] == "http://fake-searxng:8080"
+        print("  RuntimeHost auto docker selection OK")
+
+
+def test_host_auto_falls_back_to_host_when_docker_unavailable():
+    """Verify auto backend falls back to the host executor when Docker is unavailable."""
+    with tempfile.TemporaryDirectory() as td:
+        with patch(
+            "helix.runtime.host.docker_is_available",
+            return_value=(False, "docker unavailable"),
+        ):
+            host = RuntimeHost(
+                workspace=Path(td),
+                session_id="session-01",
+                sandbox_backend="auto",
+            )
+        assert host.resolved_sandbox_backend == "host(auto-fallback)"
+        assert host._env.approval_profile == "host-subprocess-v1"
+        assert "docker unavailable" in host._status_text()
+        print("  RuntimeHost auto host fallback OK")
 
 
 # =========================================================================== #
@@ -499,12 +550,14 @@ def test_cli_parser():
     args = parser.parse_args([
         "--provider", "deepseek",
         "--mode", "auto",
+        "--sandbox-backend", "docker",
         "--model", "deepseek-chat",
         "--workspace", "/tmp/test",
         "--session-id", "design-01",
     ])
     assert args.provider == "deepseek"
     assert args.mode == "auto"
+    assert args.sandbox_backend == "docker"
     assert args.model == "deepseek-chat"
     assert args.workspace == "/tmp/test"
     assert args.session_id == "design-01"

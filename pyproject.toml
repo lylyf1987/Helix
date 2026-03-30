@@ -20,6 +20,8 @@ include = ["helix*"]
 [tool.setuptools.package-data]
 helix = [
   "prompts/*.json",
+  "runtime/docker/*.Dockerfile",
+  "runtime/docker/*.sh",
   "builtin_skills/**/SKILL.md",
   "builtin_skills/**/*.py",
   "builtin_skills/**/*.sh",

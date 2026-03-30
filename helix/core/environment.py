@@ -118,6 +118,7 @@ class Environment:
         self.mode = mode
         self.token_limit = token_limit
         self.keep_last_k = keep_last_k
+        self.approval_profile = "host-subprocess-v1"
 
         # Pluggable executor
         self._executor = executor

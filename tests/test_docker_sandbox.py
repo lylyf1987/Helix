@@ -1,0 +1,159 @@
+"""Docker sandbox integration tests."""
+
+import sys
+import tempfile
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from helix.core.docker_sandbox import DockerSandboxExecutor, docker_is_available
+
+
+def _docker_ready() -> bool:
+    available, reason = docker_is_available()
+    if not available:
+        print(f"  Docker unavailable, skipping docker sandbox tests: {reason}")
+        return False
+    return True
+
+
+def test_docker_sandbox_bash_execution():
+    if not _docker_ready():
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
+        turn = executor(
+            {
+                "job_name": "docker-bash",
+                "code_type": "bash",
+                "script": "echo hello-from-docker",
+            },
+            workspace,
+        )
+        assert "succeeded" in turn.content
+        assert "hello-from-docker" in turn.content
+        print("  Docker sandbox bash execution OK")
+
+
+def test_docker_sandbox_writes_host_workspace():
+    if not _docker_ready():
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
+        turn = executor(
+            {
+                "job_name": "docker-write",
+                "code_type": "bash",
+                "script": "printf 'from-docker' > docker-output.txt",
+            },
+            workspace,
+        )
+        assert "succeeded" in turn.content
+        assert (workspace / "docker-output.txt").read_text(encoding="utf-8") == "from-docker"
+        print("  Docker sandbox host workspace write OK")
+
+
+def test_docker_sandbox_persists_python_installs_in_cache():
+    if not _docker_ready():
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        package_dir = workspace / "pkgdemo"
+        module_dir = package_dir / "demo_pkg"
+        module_dir.mkdir(parents=True, exist_ok=True)
+        (package_dir / "setup.py").write_text(
+            "from setuptools import setup\n"
+            "setup(name='demo-pkg', version='0.1.0', packages=['demo_pkg'])\n",
+            encoding="utf-8",
+        )
+        (module_dir / "__init__.py").write_text("VALUE = 'persisted'\n", encoding="utf-8")
+
+        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
+        install_turn = executor(
+            {
+                "job_name": "docker-pip-install",
+                "code_type": "bash",
+                "script": "python -m pip install ./pkgdemo && python -c \"import demo_pkg; print(demo_pkg.VALUE)\"",
+            },
+            workspace,
+        )
+        assert "persisted" in install_turn.content
+
+        reuse_turn = executor(
+            {
+                "job_name": "docker-pip-reuse",
+                "code_type": "python",
+                "script": "import demo_pkg; print(demo_pkg.VALUE)",
+            },
+            workspace,
+        )
+        assert "persisted" in reuse_turn.content
+        print("  Docker sandbox Python package cache persistence OK")
+
+
+def test_docker_sandbox_can_use_git_metadata():
+    if not _docker_ready():
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        import subprocess
+
+        subprocess.run(["git", "init"], cwd=workspace, check=True, stdout=subprocess.DEVNULL)
+        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
+        turn = executor(
+            {
+                "job_name": "docker-git",
+                "code_type": "bash",
+                "script": (
+                    "git config user.email 'sandbox@example.com' && "
+                    "git config user.name 'Sandbox' && "
+                    "printf 'x' > tracked.txt && "
+                    "git add tracked.txt && "
+                    "git status --short"
+                ),
+            },
+            workspace,
+        )
+        assert "A  tracked.txt" in turn.content
+        print("  Docker sandbox git metadata access OK")
+
+
+def test_docker_sandbox_managed_searxng_returns_json():
+    if not _docker_ready():
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        executor = DockerSandboxExecutor(workspace)
+        turn = executor(
+            {
+                "job_name": "docker-searxng",
+                "code_type": "python",
+                "script": (
+                    "import json, os\n"
+                    "from urllib.request import urlopen\n"
+                    "base = os.environ['SEARXNG_BASE_URL'].rstrip('/')\n"
+                    "with urlopen(base + '/search?q=test&format=json', timeout=20) as resp:\n"
+                    "    payload = json.loads(resp.read().decode('utf-8', errors='replace'))\n"
+                    "print(json.dumps({'status': 'ok', 'keys': sorted(payload.keys())[:5]}))\n"
+                ),
+            },
+            workspace,
+        )
+        assert "succeeded" in turn.content
+        assert "status: ok" in turn.content
+        print("  Docker sandbox managed SearXNG JSON OK")
+
+
+if __name__ == "__main__":
+    test_docker_sandbox_bash_execution()
+    test_docker_sandbox_writes_host_workspace()
+    test_docker_sandbox_persists_python_installs_in_cache()
+    test_docker_sandbox_can_use_git_metadata()
+    test_docker_sandbox_managed_searxng_returns_json()

@@ -58,6 +58,12 @@ def build_parser() -> argparse.ArgumentParser:
         required=True,
         help="Session identifier for loading and persisting conversation state",
     )
+    parser.add_argument(
+        "--sandbox-backend",
+        default="auto",
+        choices=["auto", "docker", "host"],
+        help="Exec backend: auto (docker first, host fallback), docker, or host (default: auto)",
+    )
 
     # Tool configuration
     tool_group = parser.add_argument_group(
@@ -104,6 +110,7 @@ def main(argv: list[str] = None) -> int:
         session_id=args.session_id,
         provider=args.provider,
         mode=args.mode,
+        sandbox_backend=args.sandbox_backend,
         model=args.model,
         image_analysis_provider=args.image_analysis_provider,
         image_analysis_model=args.image_analysis_model,

@@ -35,9 +35,10 @@ class ApprovalPolicy:
         self.approved_patterns: set[str] = set()
         self.approved_paths: set[str] = set()
 
-    def _hash_payload(self, payload: dict) -> str:
+    def _hash_payload(self, payload: dict, *, profile: str = "") -> str:
         """Hash the full payload for exact-match approval."""
         content = (
+            profile +
             str(payload.get("code_type", "")) +
             str(payload.get("script", "")) +
             str(payload.get("script_path", "")) +
@@ -45,7 +46,7 @@ class ApprovalPolicy:
         ).encode("utf-8")
         return hashlib.md5(content).hexdigest()
 
-    def _pattern_key(self, payload: dict) -> Optional[str]:
+    def _pattern_key(self, payload: dict, *, profile: str = "") -> Optional[str]:
         """Extract a normalized pattern key for inline scripts only.
 
         Pattern approvals are defined over script content, not script paths.
@@ -60,7 +61,7 @@ class ApprovalPolicy:
         normalized = re.sub(r'"[^"]*"', '"..."', script)
         normalized = re.sub(r"'[^']*'", "'...'", normalized)
         normalized = re.sub(r"\b\d+\b", "N", normalized)
-        return f"{payload.get('code_type', 'bash')}:{normalized.strip()}"
+        return f"{profile}:{payload.get('code_type', 'bash')}:{normalized.strip()}"
 
     def __call__(self, env: Environment, action: Action) -> ApprovalResult:
         """Environment hook: OnBeforeExecute."""
@@ -74,11 +75,12 @@ class ApprovalPolicy:
         if action.payload.get("script_path") in self.approved_paths:
             return True
 
-        payload_hash = self._hash_payload(action.payload)
+        profile = str(getattr(env, "approval_profile", "") or "")
+        payload_hash = self._hash_payload(action.payload, profile=profile)
         if payload_hash in self.approved_exact:
             return True
 
-        pattern_key = self._pattern_key(action.payload)
+        pattern_key = self._pattern_key(action.payload, profile=profile)
         if pattern_key and pattern_key in self.approved_patterns:
             return True
 

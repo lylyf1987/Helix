@@ -75,7 +75,6 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
   "script_path": "skills/all-agents/search-online-context/scripts/search_searxng.py",
   "script_args": [
     "--query", "site:forecast.weather.gov chicago tomorrow weather",
-    "--searxng-base-url", "http://127.0.0.1:8888",
     "--limit", "8",
     "--language", "en-US",
     "--categories", "general",
@@ -107,7 +106,6 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
   "script_path": "skills/all-agents/search-online-context/scripts/search_and_fetch.py",
   "script_args": [
     "--query", "site:forecast.weather.gov chicago tomorrow weather",
-    "--searxng-base-url", "http://127.0.0.1:8888",
     "--limit", "8",
     "--fetch", "4",
     "--context-chars", "2500",
@@ -168,7 +166,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 
 # Notes
 
-- Ensure SearXNG is running, for example at `http://127.0.0.1:8888`.
+- Ensure SearXNG is running and reachable through `SEARXNG_BASE_URL`.
 - Prefer `search_searxng.py` plus `fetch_pages.py` for non-trivial research because the agent gets a clearer decision point between phases.
 - Keep fetch targets selective; fetching too many pages reduces signal and bloats workflow history.
 - Defaults: `--limit 8`, `--context-chars 2500`, `--max-total-context-chars 15000`.
