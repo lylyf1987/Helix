@@ -10,8 +10,18 @@ HOME_DIR="${HOME:-${CACHE_ROOT}/home}"
 
 mkdir -p "${CACHE_ROOT}" "${PIP_CACHE_DIR}" "${NPM_CACHE_DIR}" "${NPM_PREFIX_DIR}" "${HOME_DIR}"
 
+RESET_VENV=0
 if [ ! -x "${VENV_DIR}/bin/python" ]; then
-  python -m venv "${VENV_DIR}"
+  RESET_VENV=1
+elif ! grep -q '^include-system-site-packages = true$' "${VENV_DIR}/pyvenv.cfg" 2>/dev/null; then
+  # Upgrade old cache volumes created before the browser/runtime packages were
+  # exposed through the persistent venv.
+  RESET_VENV=1
+fi
+
+if [ "${RESET_VENV}" = "1" ]; then
+  rm -rf "${VENV_DIR}"
+  python -m venv --system-site-packages "${VENV_DIR}"
 fi
 
 export HOME="${HOME_DIR}"

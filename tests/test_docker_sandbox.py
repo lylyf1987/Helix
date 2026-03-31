@@ -96,6 +96,33 @@ def test_docker_sandbox_persists_python_installs_in_cache():
         print("  Docker sandbox Python package cache persistence OK")
 
 
+def test_docker_sandbox_browser_tooling_available():
+    if not _docker_ready():
+        return
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
+        turn = executor(
+            {
+                "job_name": "docker-browser-tooling",
+                "code_type": "python",
+                "script": (
+                    "import shutil, selenium\n"
+                    "print('selenium_import=1')\n"
+                    "print('chromium_path=' + str(shutil.which('chromium') or ''))\n"
+                    "print('chromedriver_path=' + str(shutil.which('chromedriver') or ''))\n"
+                ),
+            },
+            workspace,
+        )
+        assert "succeeded" in turn.content
+        assert "selenium_import=1" in turn.content
+        assert "chromium_path=/usr/bin/chromium" in turn.content
+        assert "chromedriver_path=/usr/bin/chromedriver" in turn.content
+        print("  Docker sandbox browser tooling OK")
+
+
 def test_docker_sandbox_can_use_git_metadata():
     if not _docker_ready():
         return
@@ -155,5 +182,6 @@ if __name__ == "__main__":
     test_docker_sandbox_bash_execution()
     test_docker_sandbox_writes_host_workspace()
     test_docker_sandbox_persists_python_installs_in_cache()
+    test_docker_sandbox_browser_tooling_available()
     test_docker_sandbox_can_use_git_metadata()
     test_docker_sandbox_managed_searxng_returns_json()

@@ -26,6 +26,8 @@ _DOCKER_TIMEOUT = int(os.environ.get("AGENTIC_DOCKER_SANDBOX_TIMEOUT", "600"))
 _DOCKER_MEMORY = os.environ.get("AGENTIC_DOCKER_SANDBOX_MEMORY", "2g")
 _DOCKER_CPUS = os.environ.get("AGENTIC_DOCKER_SANDBOX_CPUS", "2.0")
 _DOCKER_PIDS = os.environ.get("AGENTIC_DOCKER_SANDBOX_PIDS", "256")
+_SEARXNG_READY_TIMEOUT = int(os.environ.get("AGENTIC_DOCKER_SEARXNG_READY_TIMEOUT", "30"))
+_SEARXNG_READY_POLL = float(os.environ.get("AGENTIC_DOCKER_SEARXNG_READY_POLL", "1.0"))
 _PASS_ENV_PREFIXES = (
     "IMAGE_ANALYSIS_",
     "IMAGE_GENERATION_",
@@ -267,6 +269,7 @@ class DockerSandboxExecutor:
             check=False,
         )
         if inspect.returncode == 0 and inspect.stdout.strip() == "true":
+            self._wait_for_searxng_ready()
             return
         if inspect.returncode == 0:
             self._run_docker(["rm", "-f", self.searxng_name], check=False)
@@ -289,6 +292,38 @@ class DockerSandboxExecutor:
             ],
             timeout=_DOCKER_BUILD_TIMEOUT,
         )
+        self._wait_for_searxng_ready()
+
+    def _wait_for_searxng_ready(self) -> None:
+        deadline = time.time() + max(1, _SEARXNG_READY_TIMEOUT)
+        probe = (
+            "from urllib.request import urlopen\n"
+            f"urlopen('{self._effective_searxng_base_url.rstrip('/')}/search?q=test&format=json', timeout=5).read(64)\n"
+            "print('ready')\n"
+        )
+        last_error = "searxng readiness probe did not return success"
+        while time.time() < deadline:
+            completed = self._run_docker(
+                [
+                    "run",
+                    "--rm",
+                    "--network",
+                    self.network_name,
+                    self.image_tag,
+                    "python",
+                    "-c",
+                    probe,
+                ],
+                check=False,
+                timeout=15,
+            )
+            if completed.returncode == 0:
+                return
+            detail = (completed.stderr or completed.stdout or "").strip()
+            if detail:
+                last_error = detail
+            time.sleep(max(0.1, _SEARXNG_READY_POLL))
+        raise RuntimeError(f"SearXNG did not become ready: {last_error}")
 
     @staticmethod
     def _payload_uses_searxng(payload: dict[str, Any]) -> bool:
@@ -355,7 +390,9 @@ class DockerSandboxExecutor:
         if code_type == "bash":
             if has_path:
                 return ["bash", path_value, *args_value]
-            return ["bash", "-lc", script_value]
+            # Avoid login-shell PATH resets so the entrypoint-managed venv
+            # remains the active Python toolchain for all execs.
+            return ["bash", "-c", script_value]
         raise ValueError(f"Unsupported code_type: {code_type}")
 
     def _remove_container(self, name: str) -> None:
