@@ -174,6 +174,7 @@ class RuntimeHost:
         self._model = create_provider(provider, model=model)
 
         self._stream_display = StreamingDisplay()
+        self._sandbox_executor: object | None = None
 
         # Create the core agent — Agent owns prompt building from workspace
         self._agent = Agent(
@@ -190,6 +191,7 @@ class RuntimeHost:
             sandbox_backend=self.requested_sandbox_backend,
             searxng_base_url=searxng_base_url,
         )
+        self._sandbox_executor = sandbox_executor
 
         # Create environment with sandbox executor
         self._env = Environment(
@@ -459,8 +461,12 @@ class RuntimeHost:
             if available:
                 executor = DockerSandboxExecutor(
                     self.workspace,
+                    session_id=self.session_id,
                     searxng_base_url=searxng_base_url,
                 )
+                prepare_runtime = getattr(executor, "prepare_runtime", None)
+                if callable(prepare_runtime):
+                    prepare_runtime()
                 self.resolved_sandbox_backend = "docker" if backend == "docker" else "docker(auto)"
                 self._sandbox_status_fields = executor.status_fields()
                 for key, value in executor.tool_environment().items():
@@ -483,6 +489,12 @@ class RuntimeHost:
             self._persist_session()
         except Exception:
             pass
+        sandbox_shutdown = getattr(self._sandbox_executor, "shutdown", None)
+        if callable(sandbox_shutdown):
+            try:
+                sandbox_shutdown()
+            except Exception:
+                pass
 
     def _open_session_field_view(self, field: str) -> str:
         """Persist and open a field-specific HTML view for the current session."""

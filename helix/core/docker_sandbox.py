@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -18,7 +19,6 @@ from helix.core.state import Turn
 
 _DOCKER_BUILD_ROOT = Path(__file__).resolve().parent.parent / "runtime" / "docker"
 _SANDBOX_DOCKERFILE = _DOCKER_BUILD_ROOT / "exec-sandbox.Dockerfile"
-_SANDBOX_ENTRYPOINT = _DOCKER_BUILD_ROOT / "helix_exec.sh"
 _SEARXNG_IMAGE = "docker.io/searxng/searxng:latest"
 _DOCKER_INFO_TIMEOUT = 5
 _DOCKER_BUILD_TIMEOUT = int(os.environ.get("AGENTIC_DOCKER_BUILD_TIMEOUT", "1800"))
@@ -28,6 +28,7 @@ _DOCKER_CPUS = os.environ.get("AGENTIC_DOCKER_SANDBOX_CPUS", "2.0")
 _DOCKER_PIDS = os.environ.get("AGENTIC_DOCKER_SANDBOX_PIDS", "256")
 _SEARXNG_READY_TIMEOUT = int(os.environ.get("AGENTIC_DOCKER_SEARXNG_READY_TIMEOUT", "30"))
 _SEARXNG_READY_POLL = float(os.environ.get("AGENTIC_DOCKER_SEARXNG_READY_POLL", "1.0"))
+_NETWORK_NAME_PREFIX = "helix-sandbox-net-"
 _PASS_ENV_PREFIXES = (
     "IMAGE_ANALYSIS_",
     "IMAGE_GENERATION_",
@@ -153,24 +154,35 @@ class DockerSandboxExecutor:
 
     backend_name = "docker"
 
-    def __init__(self, workspace: Path, *, searxng_base_url: str | None = None) -> None:
+    def __init__(
+        self,
+        workspace: Path,
+        *,
+        session_id: str | None = None,
+        searxng_base_url: str | None = None,
+    ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.slug = _workspace_slug(self.workspace)
+        self.session_id = str(session_id or "session").strip() or "session"
+        self.session_token = hashlib.sha256(self.session_id.encode("utf-8")).hexdigest()[:12]
         self.image_tag = f"helix-sandbox:{_hash_directory(_DOCKER_BUILD_ROOT)}"
         self.network_name = f"helix-sandbox-net-{self.slug}"
         self.cache_volume = f"helix-sandbox-cache-{self.slug}"
         self.searxng_name = f"helix-searxng-{self.slug}"
         self.searxng_config_dir = self.workspace / ".runtime" / "docker" / "searxng" / "config"
         self.searxng_data_dir = self.workspace / ".runtime" / "docker" / "searxng" / "data"
+        self.session_dir = self.workspace / ".runtime" / "docker" / "active_sessions"
+        self.session_marker_path = self.session_dir / f"{self.session_token}.{os.getpid()}.json"
         requested = str(searxng_base_url or "").strip()
         self._managed_searxng = not requested
-        self._requested_searxng_base_url = requested
         self._effective_searxng_base_url = (
             f"http://{self.searxng_name}:8080"
             if self._managed_searxng
             else _dockerize_loopback_url(requested)
         )
         self.approval_profile = f"docker-online-rw-workspace-v1:{self.image_tag}"
+        self._session_registered = False
+        self._runtime_prepared = False
 
     def status_fields(self) -> dict[str, str]:
         return {
@@ -204,6 +216,53 @@ class DockerSandboxExecutor:
             raise RuntimeError(detail or f"docker {' '.join(args)} failed")
         return completed
 
+    def _prune_stale_session_markers(self) -> None:
+        if not self.session_dir.exists():
+            return
+        for marker in self.session_dir.glob("*.json"):
+            try:
+                payload = json.loads(marker.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                marker.unlink(missing_ok=True)
+                continue
+
+            try:
+                pid = int(payload.get("pid"))
+            except (TypeError, ValueError):
+                marker.unlink(missing_ok=True)
+                continue
+
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                marker.unlink(missing_ok=True)
+            except PermissionError:
+                continue
+
+    def _register_active_session(self) -> None:
+        if self._session_registered:
+            return
+        self.session_dir.mkdir(parents=True, exist_ok=True)
+        self._prune_stale_session_markers()
+        payload = {
+            "pid": os.getpid(),
+            "session_id": self.session_id,
+            "workspace": str(self.workspace),
+            "started_at": time.time(),
+        }
+        self.session_marker_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        self._session_registered = True
+
+    def _unregister_active_session(self) -> None:
+        self.session_marker_path.unlink(missing_ok=True)
+        self._session_registered = False
+
+    def _has_active_sessions(self) -> bool:
+        self._prune_stale_session_markers()
+        if not self.session_dir.exists():
+            return False
+        return any(self.session_dir.glob("*.json"))
+
     def _ensure_image(self) -> None:
         inspect = self._run_docker(["image", "inspect", self.image_tag], check=False)
         if inspect.returncode == 0:
@@ -221,11 +280,56 @@ class DockerSandboxExecutor:
             timeout=_DOCKER_BUILD_TIMEOUT,
         )
 
+    def _ensure_searxng_image(self) -> None:
+        inspect = self._run_docker(["image", "inspect", _SEARXNG_IMAGE], check=False)
+        if inspect.returncode == 0:
+            return
+        self._run_docker(["pull", _SEARXNG_IMAGE], timeout=_DOCKER_BUILD_TIMEOUT)
+
+    def _cleanup_unused_networks(self) -> None:
+        listed = self._run_docker(
+            ["network", "ls", "--format", "{{.Name}}"],
+            check=False,
+            timeout=30,
+        )
+        if listed.returncode != 0:
+            return
+        for raw_name in listed.stdout.splitlines():
+            name = raw_name.strip()
+            if not name.startswith(_NETWORK_NAME_PREFIX):
+                continue
+            if name == self.network_name:
+                continue
+            inspect = self._run_docker(["network", "inspect", name], check=False, timeout=30)
+            if inspect.returncode != 0:
+                continue
+            try:
+                payload = json.loads(inspect.stdout)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(payload, list) or not payload:
+                continue
+            network = payload[0] if isinstance(payload[0], dict) else {}
+            containers = network.get("Containers") or {}
+            if isinstance(containers, dict) and containers:
+                continue
+            self._run_docker(["network", "rm", name], check=False, timeout=30)
+
     def _ensure_network(self) -> None:
         inspect = self._run_docker(["network", "inspect", self.network_name], check=False)
         if inspect.returncode == 0:
             return
-        self._run_docker(["network", "create", self.network_name])
+        created = self._run_docker(["network", "create", self.network_name], check=False, timeout=30)
+        if created.returncode == 0:
+            return
+        detail = (created.stderr or created.stdout or "").strip().lower()
+        if "fully subnetted" in detail:
+            self._cleanup_unused_networks()
+            created = self._run_docker(["network", "create", self.network_name], check=False, timeout=30)
+            if created.returncode == 0:
+                return
+        detail = (created.stderr or created.stdout or "").strip()
+        raise RuntimeError(detail or f"docker network create {self.network_name} failed")
 
     def _ensure_cache_volume(self) -> None:
         inspect = self._run_docker(["volume", "inspect", self.cache_volume], check=False)
@@ -325,26 +429,34 @@ class DockerSandboxExecutor:
             time.sleep(max(0.1, _SEARXNG_READY_POLL))
         raise RuntimeError(f"SearXNG did not become ready: {last_error}")
 
-    @staticmethod
-    def _payload_uses_searxng(payload: dict[str, Any]) -> bool:
-        script_path = str(payload.get("script_path", "") or "")
-        script = str(payload.get("script", "") or "")
-        script_args = str(payload.get("script_args", "") or "")
-        joined = "\n".join([script_path, script, script_args]).lower()
-        return (
-            "search-online-context" in joined
-            or "search_searxng.py" in joined
-            or "search_and_fetch.py" in joined
-            or "fetch_pages.py" in joined
-            or "searxng" in joined
-        )
-
-    def _ensure_support_services(self, payload: dict[str, Any]) -> None:
+    def prepare_runtime(self) -> None:
+        if self._runtime_prepared:
+            return
         self._ensure_image()
         self._ensure_network()
         self._ensure_cache_volume()
-        if self._payload_uses_searxng(payload):
-            self._ensure_searxng_service()
+        self._register_active_session()
+        try:
+            if self._managed_searxng:
+                self._ensure_searxng_image()
+                self._ensure_searxng_service()
+            self._runtime_prepared = True
+        except Exception:
+            self._unregister_active_session()
+            raise
+
+    def shutdown(self) -> None:
+        self._unregister_active_session()
+        self._runtime_prepared = False
+        if self._has_active_sessions():
+            return
+        try:
+            if self._managed_searxng:
+                self._run_docker(["rm", "-f", self.searxng_name], check=False, timeout=30)
+            self._run_docker(["network", "rm", self.network_name], check=False, timeout=30)
+        finally:
+            if self.session_dir.exists() and not any(self.session_dir.iterdir()):
+                self.session_dir.rmdir()
 
     def _build_container_environment(self, workspace_root: Path) -> dict[str, str]:
         tmpdir = workspace_root / ".runtime" / "tmp"
@@ -408,7 +520,7 @@ class DockerSandboxExecutor:
         job_name = str(payload.get("job_name", "unnamed_job")).strip() or "unnamed_job"
 
         try:
-            self._ensure_support_services(payload)
+            self.prepare_runtime()
             code_type, has_path, path_value, script_value, args_value = _normalize_exec_input(payload)
             container_command = self._build_container_command(
                 code_type,

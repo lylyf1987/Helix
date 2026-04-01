@@ -35,7 +35,7 @@ BUILTIN_SKILLS = WORKSPACE / "helix" / "builtin_skills"
 
 
 def _make_host(workspace: Path, **kwargs) -> RuntimeHost:
-    params = {"workspace": workspace, "session_id": "skills-01"}
+    params = {"workspace": workspace, "session_id": "skills-01", "sandbox_backend": "host"}
     params.update(kwargs)
     return RuntimeHost(**params)
 
