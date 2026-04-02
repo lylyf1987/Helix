@@ -83,6 +83,7 @@ def test_docker_sandbox_persists_python_installs_in_cache():
 
         executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
         try:
+            assert executor.cache_dir == workspace / ".runtime" / "docker" / "cache"
             install_turn = executor(
                 {
                     "job_name": "docker-pip-install",
@@ -102,6 +103,7 @@ def test_docker_sandbox_persists_python_installs_in_cache():
                 workspace,
             )
             assert "persisted" in reuse_turn.content
+            assert (workspace / ".runtime" / "docker" / "cache" / "venv").exists()
             print("  Docker sandbox Python package cache persistence OK")
         finally:
             executor.shutdown()

@@ -16,6 +16,7 @@ from helix.core.local_model_service import (
     LocalModelServiceManager,
     _http_json_request,
     _kill_process_tree,
+    default_cache_root,
 )
 
 
@@ -59,6 +60,29 @@ def test_local_model_service_start_and_stop():
         assert status == 0
         assert parsed is None
         print("  Local model service stop OK")
+
+
+def test_local_model_service_default_cache_root_is_workspace_local():
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        expected = workspace / ".runtime" / "local-model-service" / "cache"
+        assert default_cache_root(workspace) == expected.resolve()
+
+        manager = LocalModelServiceManager(
+            workspace,
+            session_id="svc-default-cache",
+            backend_mode="fake",
+        )
+        try:
+            manager.start()
+        except PermissionError as exc:
+            pytest.skip(f"local socket bind is not permitted in this environment: {exc}")
+        try:
+            assert manager.cache_root == expected.resolve()
+            assert manager.cache_root.exists()
+            print("  Local model service default cache root OK")
+        finally:
+            manager.stop()
 
 
 def test_local_model_service_auth_and_path_validation():

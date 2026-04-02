@@ -66,8 +66,9 @@ def local_model_service_supported() -> bool:
     return sys.platform == "darwin" and platform.machine().lower() == "arm64"
 
 
-def default_cache_root() -> Path:
-    return (Path.home() / "Library" / "Caches" / "helix" / "local-model-service").resolve()
+def default_cache_root(workspace: Path) -> Path:
+    workspace_root = Path(workspace).expanduser().resolve()
+    return (workspace_root / ".runtime" / "local-model-service" / "cache").resolve()
 
 
 def _json_dumps(payload: dict[str, Any]) -> bytes:
@@ -773,7 +774,7 @@ class LocalModelServiceManager:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
         self.state_path = self.runtime_dir / f"{self.session_id}.json"
         self.log_path = self.runtime_dir / f"{self.session_id}.log"
-        self.cache_root = Path(cache_root or default_cache_root()).expanduser().resolve()
+        self.cache_root = Path(cache_root or default_cache_root(self.workspace)).expanduser().resolve()
         self.idle_seconds = max(1, int(idle_seconds))
         self.backend_mode = str(backend_mode or _DEFAULT_BACKEND_MODE).strip().lower() or _REAL_BACKEND_NAME
         self._process: subprocess.Popen[str] | None = None

@@ -286,7 +286,7 @@ class DockerSandboxExecutor:
         self.session_token = hashlib.sha256(self.session_id.encode("utf-8")).hexdigest()[:12]
         self.image_tag = f"helix-sandbox:{_hash_directory(_DOCKER_BUILD_ROOT)}"
         self.network_name = f"helix-sandbox-net-{self.slug}"
-        self.cache_volume = f"helix-sandbox-cache-{self.slug}"
+        self.cache_dir = self.workspace / ".runtime" / "docker" / "cache"
         self.searxng_name = f"helix-searxng-{self.slug}"
         self.searxng_config_dir = self.workspace / ".runtime" / "docker" / "searxng" / "config"
         self.searxng_data_dir = self.workspace / ".runtime" / "docker" / "searxng" / "data"
@@ -311,6 +311,7 @@ class DockerSandboxExecutor:
             "docker_image": self.image_tag,
             "docker_network": self.network_name,
             "docker_searxng": self._effective_searxng_base_url,
+            "docker_cache_root": str(self.cache_dir),
         }
         if self._local_model_service_env.get("HELIX_LOCAL_MODEL_SERVICE_URL"):
             fields["local_model_service"] = self._local_model_service_env["HELIX_LOCAL_MODEL_SERVICE_URL"]
@@ -464,34 +465,16 @@ class DockerSandboxExecutor:
         detail = (created.stderr or created.stdout or "").strip()
         raise RuntimeError(detail or f"docker network create {self.network_name} failed")
 
-    def _ensure_cache_volume(self) -> None:
-        inspect = self._run_docker(["volume", "inspect", self.cache_volume], check=False)
-        if inspect.returncode != 0:
-            self._run_docker(["volume", "create", self.cache_volume])
-
-        uid = str(os.getuid())
-        gid = str(os.getgid())
-        self._run_docker(
-            [
-                "run",
-                "--rm",
-                "-v",
-                f"{self.cache_volume}:/helix-cache",
-                self.image_tag,
-                "bash",
-                "-lc",
-                (
-                    "mkdir -p "
-                    "/helix-cache/home "
-                    "/helix-cache/pip "
-                    "/helix-cache/npm "
-                    "/helix-cache/npm-global "
-                    "/helix-cache/venv "
-                    "&& chown -R "
-                    f"{uid}:{gid} /helix-cache"
-                ),
-            ],
-        )
+    def _ensure_cache_dir(self) -> None:
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        for relative in (
+            "home",
+            "pip",
+            "npm",
+            "npm-global",
+            "venv",
+        ):
+            (self.cache_dir / relative).mkdir(parents=True, exist_ok=True)
 
     def _ensure_searxng_service(self) -> None:
         if not self._managed_searxng:
@@ -567,7 +550,7 @@ class DockerSandboxExecutor:
             return
         self._ensure_image()
         self._ensure_network()
-        self._ensure_cache_volume()
+        self._ensure_cache_dir()
         self._register_active_session()
         try:
             if self._managed_searxng:
@@ -718,7 +701,7 @@ class DockerSandboxExecutor:
             "--mount",
             f"type=bind,src={workspace_root},dst={workspace_root}",
             "--mount",
-            f"type=volume,src={self.cache_volume},dst=/helix-cache",
+            f"type=bind,src={self.cache_dir},dst=/helix-cache",
         ]
         if sys.platform.startswith("linux"):
             docker_args.extend(["--add-host", "host.docker.internal:host-gateway"])
