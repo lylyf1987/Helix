@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from helix.core.local_model_service import (
     LocalModelServiceManager,
+    _RealImageGenerationBackend,
     _http_json_request,
     _kill_process_tree,
     default_cache_root,
@@ -270,3 +271,53 @@ def test_local_model_service_recovers_stale_coordinator_state(monkeypatch: pytes
             print("  Local model service stale coordinator recovery OK")
         finally:
             replacement.stop()
+
+
+def test_real_image_generation_backend_loads_lazily(monkeypatch: pytest.MonkeyPatch):
+    calls = {"count": 0}
+
+    def fake_load(self) -> None:
+        calls["count"] += 1
+        self.device = "cpu"
+
+        class FakePipeline:
+            def __call__(self, *, prompt: str, width: int, height: int):
+                class FakeImage:
+                    def save(self, path: Path) -> None:
+                        Path(path).write_bytes(b"png")
+
+                class FakeResult:
+                    images = [FakeImage()]
+
+                assert prompt == "demo prompt"
+                assert width == 512
+                assert height == 512
+                return FakeResult()
+
+        self.pipeline = FakePipeline()
+
+    monkeypatch.setattr(_RealImageGenerationBackend, "_load", fake_load)
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td).resolve()
+        backend = _RealImageGenerationBackend(
+            "Tongyi-MAI/Z-Image-Turbo",
+            workspace / ".cache",
+            workspace / "python",
+        )
+        assert calls["count"] == 0
+
+        result = backend.handle(
+            {
+                "workspace_root": str(workspace),
+                "inputs": {
+                    "prompt": "demo prompt",
+                    "size": "512x512",
+                    "output_path": "generated/demo.png",
+                },
+            }
+        )
+
+        assert calls["count"] == 1
+        assert result["status"] == "ok"
+        assert result["output_path"] == "generated/demo.png"

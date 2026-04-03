@@ -359,7 +359,6 @@ class _RealImageGenerationBackend:
         self.python_bin = python_bin
         self.pipeline: Any | None = None
         self.device: str | None = None
-        self._load()
 
     def _load(self) -> None:
         try:
@@ -383,6 +382,10 @@ class _RealImageGenerationBackend:
         )
         self.pipeline.to(device)
 
+    def _ensure_loaded(self) -> None:
+        if self.pipeline is None:
+            self._load()
+
     def handle(self, payload: dict[str, Any]) -> dict[str, Any]:
         inputs = _request_inputs(payload)
         prompt = str(inputs.get("prompt", "")).strip()
@@ -402,6 +405,7 @@ class _RealImageGenerationBackend:
                 str(inputs.get("output_path", "")).strip(),
                 expect_exists=False,
             )
+            self._ensure_loaded()
             assert self.pipeline is not None
             result = self.pipeline(
                 prompt=prompt,
