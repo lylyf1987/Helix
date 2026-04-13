@@ -183,7 +183,7 @@ Scripts run in Docker and call the coordinator via HTTP. Key points:
 ### Setup
 
 ```bash
-helix model download --spec skills/my-gen-skill/model_spec.json
+helix model download --skill my-gen-skill --workspace .
 helix start local-model-service --workspace .
 ```
 

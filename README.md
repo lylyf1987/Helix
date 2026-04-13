@@ -77,8 +77,10 @@ helix \
 ```bash
 helix start searxng                                    # Local web search
 helix start local-model-service --workspace ~/agent    # Local ML models
-helix model download --spec helix/builtin_skills/generate-image/model_spec.json
+helix model download --skill generate-image            # Download model weights
 ```
+
+Set `HF_TOKEN` before downloading if the model requires HuggingFace authentication.
 
 ### 4. Or Use a Cloud LLM
 
@@ -102,7 +104,7 @@ Any OpenAI-compatible endpoint works.
 | `helix start local-model-service --workspace PATH` | Start local model service |
 | `helix stop searxng \| local-model-service` | Stop a service |
 | `helix status` | Show running services |
-| `helix model download --spec PATH` | Download model weights |
+| `helix model download --skill NAME` | Download model weights |
 
 ### Runtime Commands
 

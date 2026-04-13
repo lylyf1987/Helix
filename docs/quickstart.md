@@ -84,7 +84,7 @@ Now the agent can use the `search-online-context` skill to search the web.
 
 ```bash
 # Download a model first
-helix model download --spec helix/builtin_skills/generate-image/model_spec.json
+helix model download --skill generate-image
 
 # Start the service
 helix start local-model-service --workspace ~/my-agent

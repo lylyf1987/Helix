@@ -95,14 +95,44 @@ def _run_status() -> int:
 # --------------------------------------------------------------------------- #
 
 
+_PACKAGE_BUILTIN_SKILLS = Path(__file__).resolve().parent.parent / "builtin_skills"
+
+
+def _find_model_spec(skill_name: str, workspace: str | None) -> Path:
+    """Find model_spec.json for a skill by name.
+
+    Searches workspace skills first (if provided), then package builtins.
+    """
+    candidates: list[Path] = []
+    if workspace:
+        ws = Path(workspace).expanduser().resolve()
+        # User skills: skills/{skill}/
+        candidates.append(ws / "skills" / skill_name / "model_spec.json")
+        # Bootstrapped builtins: skills/builtin_skills/{skill}/
+        candidates.append(ws / "skills" / "builtin_skills" / skill_name / "model_spec.json")
+    # Package builtins
+    candidates.append(_PACKAGE_BUILTIN_SKILLS / skill_name / "model_spec.json")
+    for path in candidates:
+        if path.exists():
+            return path
+    searched = ", ".join(str(p.parent) for p in candidates)
+    raise FileNotFoundError(f"No model_spec.json found for skill '{skill_name}'. Searched: {searched}")
+
+
 def _run_model_download(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Helix model management")
     subparsers = parser.add_subparsers(dest="model_command", required=True)
-    download = subparsers.add_parser("download", help="Download and validate a local model spec")
-    download.add_argument("--spec", required=True, help="Absolute path to a model_spec.json file")
-    download.add_argument("--timeout", type=int, default=3600, help="Preparation timeout in seconds")
+    download = subparsers.add_parser("download", help="Download model weights for a skill")
+    download.add_argument("--skill", required=True, help="Skill name (e.g. generate-image)")
+    download.add_argument("--workspace", default=None, help="Workspace path (for user-created skills)")
+    download.add_argument("--timeout", type=int, default=3600, help="Download timeout in seconds")
     args = parser.parse_args(argv)
-    spec_path = Path(args.spec).expanduser().resolve()
+    try:
+        spec_path = _find_model_spec(args.skill, args.workspace)
+    except FileNotFoundError as exc:
+        print(json.dumps({"status": "error", "message": str(exc)}))
+        return 1
+    print(f"Using model spec: {spec_path}", file=sys.stderr)
     payload = json.loads(spec_path.read_text(encoding="utf-8"))
     try:
         normalized, model_root = download_model(
