@@ -66,6 +66,7 @@ class Environment:
         keep_last_k: int = 10,
         executor: Optional[SandboxExecutor] = None,
         compactor: Optional[Compactor] = None,
+        state_root: Optional[Path] = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -79,6 +80,9 @@ class Environment:
 
         # Pluggable compactor for LLM-based context compaction
         self._compactor = compactor
+
+        # Session state root (for sub-agent persistence)
+        self.state_root = Path(state_root) if state_root is not None else None
 
         # Dual history
         self.full_history: list[Turn] = []

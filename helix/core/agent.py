@@ -25,6 +25,8 @@ _SESSION_ROOT = "{{SESSION_ROOT}}"
 _PROJECT_ROOT = "{{PROJECT_ROOT}}"
 _DOCS_ROOT = "{{DOCS_ROOT}}"
 _SUB_AGENT_ROLE = "{{SUB_AGENT_ROLE}}"
+_SUB_AGENT_DESCRIPTION = "{{SUB_AGENT_DESCRIPTION}}"
+_SUB_AGENTS_META = "{{SUB_AGENTS_META}}"
 
 # Package-level prompts directory
 _PACKAGE_PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
@@ -134,6 +136,8 @@ def _build_system_prompt(
     project_root: Optional[Path] = None,
     docs_root: Optional[Path] = None,
     sub_agent_role: str = "",
+    sub_agent_description: str = "",
+    sub_agents_meta: str = "",
 ) -> str:
     """Build the complete system prompt from templates + runtime metadata.
 
@@ -173,6 +177,10 @@ def _build_system_prompt(
     # Sub-agent-specific placeholders
     if _SUB_AGENT_ROLE in prompt:
         prompt = prompt.replace(_SUB_AGENT_ROLE, sub_agent_role)
+    if _SUB_AGENT_DESCRIPTION in prompt:
+        prompt = prompt.replace(_SUB_AGENT_DESCRIPTION, sub_agent_description or "general-purpose sub-agent")
+    if _SUB_AGENTS_META in prompt:
+        prompt = prompt.replace(_SUB_AGENTS_META, sub_agents_meta or "- (no sub-agents created yet)")
 
     return prompt
 
@@ -210,6 +218,8 @@ class Agent:
         project_root: Optional[Path] = None,
         docs_root: Optional[Path] = None,
         sub_agent_role: str = "",
+        sub_agent_description: str = "",
+        sub_agents_meta: str = "",
         allowed_actions: frozenset[str] = ALLOWED_CORE_ACTIONS,
     ) -> None:
         self.model = model
@@ -223,6 +233,8 @@ class Agent:
             "project_root": project_root,
             "docs_root": docs_root,
             "sub_agent_role": sub_agent_role,
+            "sub_agent_description": sub_agent_description,
+            "sub_agents_meta": sub_agents_meta,
         }
         self.system_prompt = ""
 

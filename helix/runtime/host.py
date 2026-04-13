@@ -151,6 +151,7 @@ class RuntimeHost:
             session_root=self.session_root,
             project_root=self.project_root,
             docs_root=self.docs_root,
+            sub_agents_meta=self._build_sub_agents_meta_text(),
         )
 
         # 4. Discover services (started via `helix start`)
@@ -185,6 +186,7 @@ class RuntimeHost:
             executor=self._sandbox_executor,
             mode=mode,
             compactor=self._compactor,
+            state_root=self.state_root,
         )
         self._env.approval_profile = self._sandbox_executor.approval_profile
 
@@ -359,8 +361,9 @@ class RuntimeHost:
             write_runtime(f"runtime> {message}", sys.stdout)
             self._env.record(Turn(role="runtime", content=message))
         finally:
-            # Persist state after each interaction
+            # Persist state and refresh sub-agents meta for next turn
             self._persist_session()
+            self._agent._workspace_prompt_args["sub_agents_meta"] = self._build_sub_agents_meta_text()
 
     def _handle_command(self, command_line: str) -> Optional[str]:
         """Process slash commands. Returns None for exit, string for output."""
@@ -449,6 +452,17 @@ class RuntimeHost:
         self._env.save_session(
             self.session_state_path,
             extra_fields={"last_prompt": getattr(self._agent, "last_prompt", "")}
+        )
+
+    def _build_sub_agents_meta_text(self) -> str:
+        """Build sub-agents meta text for the core agent prompt."""
+        from .loop import _load_sub_agents_meta
+        meta = _load_sub_agents_meta(self.state_root)
+        if not meta:
+            return ""
+        return "\n".join(
+            f"- {entry['role']}: {entry.get('description', '')}"
+            for entry in meta
         )
 
     def _session_state(self) -> str:

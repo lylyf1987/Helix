@@ -6,9 +6,11 @@ The entire orchestration reduces to: state → agent → action → environment 
 
 from __future__ import annotations
 
+import json
 import random
 import sys
 import time
+from pathlib import Path
 from typing import Any, TextIO, Callable
 
 from ..core.action import Action, ActionParseError, ALLOWED_SUB_ACTIONS
@@ -155,11 +157,19 @@ def _delegate(action: Action, env: Environment, model: Any) -> str:
 
     Creates an isolated Environment sharing the parent's workspace, executor,
     compactor, and approval hook, then runs a recursive loop.
+
+    If state_root is set on env, sub-agent state is persisted and restored
+    across delegations to the same role.
     """
     task = action.payload
 
     if model is None:
         return "Delegation failed: no model reference. Pass model= to run_loop()."
+
+    role = task.get("role", "assistant")
+    objective = task.get("objective", "")
+    context = task.get("context", "")
+    role_description = task.get("role_description", "")
 
     # Build sub-environment sharing parent's infrastructure
     sub_env = Environment(
@@ -169,13 +179,17 @@ def _delegate(action: Action, env: Environment, model: Any) -> str:
         keep_last_k=env.keep_last_k,
         executor=env._executor,
         compactor=env._compactor,
+        state_root=env.state_root,
     )
     sub_env._on_before_execute = env._on_before_execute
 
-    # Seed sub-agent with task objective
-    role = task.get("role", "assistant")
-    objective = task.get("objective", "")
-    context = task.get("context", "")
+    # Restore previous sub-agent state if available
+    state_root = env.state_root
+    if state_root is not None:
+        sub_state_path = state_root / "sub_agents" / f"{role}.json"
+        sub_env.load_session(sub_state_path)
+
+    # Append new objective as a core_agent turn (like a new user message)
     seed_content = objective
     if context:
         seed_content += f"\n\nContext:\n{context}"
@@ -187,10 +201,60 @@ def _delegate(action: Action, env: Environment, model: Any) -> str:
         workspace=env.workspace,
         role="sub_agent",
         sub_agent_role=role,
+        sub_agent_description=role_description,
         allowed_actions=ALLOWED_SUB_ACTIONS,
     )
 
-    return run_loop(sub_agent, sub_env)
+    result = run_loop(sub_agent, sub_env)
+
+    # Persist sub-agent state and update meta registry
+    if state_root is not None:
+        sub_state_path = state_root / "sub_agents" / f"{role}.json"
+        sub_env.save_session(sub_state_path)
+        _update_sub_agents_meta(state_root, role, role_description)
+
+    return result
+
+
+# --------------------------------------------------------------------------- #
+# Sub-agent meta registry
+# --------------------------------------------------------------------------- #
+
+
+def _load_sub_agents_meta(state_root: Path) -> list[dict]:
+    """Load the sub-agents meta registry."""
+    meta_path = state_root / "sub_agents_meta.json"
+    if not meta_path.exists():
+        return []
+    try:
+        data = json.loads(meta_path.read_text(encoding="utf-8"))
+        return data if isinstance(data, list) else []
+    except (json.JSONDecodeError, OSError):
+        return []
+
+
+def _save_sub_agents_meta(state_root: Path, meta: list[dict]) -> None:
+    """Save the sub-agents meta registry."""
+    meta_path = state_root / "sub_agents_meta.json"
+    meta_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = meta_path.with_suffix(".tmp")
+    tmp.write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    tmp.replace(meta_path)
+
+
+def _update_sub_agents_meta(state_root: Path, role: str, description: str) -> None:
+    """Add or update a sub-agent entry in the meta registry."""
+    meta = _load_sub_agents_meta(state_root)
+    for entry in meta:
+        if entry.get("role") == role:
+            if description:
+                entry["description"] = description
+            return _save_sub_agents_meta(state_root, meta)
+    meta.append({
+        "role": role,
+        "description": description or f"Sub-agent: {role}",
+    })
+    _save_sub_agents_meta(state_root, meta)
 
 
 def _act_with_retry(
@@ -277,7 +341,7 @@ def _format_agent_record(action: Action) -> str:
 
     elif action.type == "delegate" and action.payload:
         lines = ["[action_input]"]
-        for key in ("role", "objective"):
+        for key in ("role", "role_description", "objective"):
             value = action.payload.get(key)
             if value:
                 lines.append(f"  {key}: {value}")

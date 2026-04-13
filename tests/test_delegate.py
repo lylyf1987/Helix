@@ -5,6 +5,7 @@ spawns sub-agent with isolated environment → sub-agent runs → result
 flows back into parent history.
 """
 
+import json
 import sys
 import tempfile
 from io import StringIO
@@ -15,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from helix.core.action import Action, ALLOWED_CORE_ACTIONS, ALLOWED_SUB_ACTIONS
 from helix.core.agent import Agent
 from helix.core.environment import Environment
-from helix.runtime.loop import run_loop, _delegate
+from helix.runtime.loop import run_loop, _delegate, _load_sub_agents_meta
 from helix.core.state import Turn
 from helix.runtime.host import docker_is_available
 from helpers import sandbox_executor
@@ -281,6 +282,159 @@ def test_delegate_with_exec_in_sub_agent():
 
 
 # =========================================================================== #
+# Sub-agent state persistence tests
+# =========================================================================== #
+
+
+def test_delegate_persists_and_restores_state():
+    """Delegate twice to same role — second sees first's history."""
+    call_count = [0]
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            call_count[0] += 1
+            return (
+                '<output>'
+                '{"response": "Result from call ' + str(call_count[0]) + '.", '
+                '"action": "chat", "action_input": {}}'
+                '</output>'
+            )
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        state_root = workspace / ".state"
+        state_root.mkdir(parents=True)
+        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+
+        # First delegation
+        action1 = Action(
+            response="Delegating...", type="delegate",
+            payload={"role": "researcher", "role_description": "Research assistant", "objective": "Find X"},
+        )
+        _delegate(action1, env, model=MockModel())
+
+        # State file should exist
+        sub_state = state_root / "sub_agents" / "researcher.json"
+        assert sub_state.exists()
+        saved = json.loads(sub_state.read_text())
+        assert len(saved["full_history"]) >= 2  # core_agent seed + sub_agent chat
+
+        # Second delegation to same role
+        action2 = Action(
+            response="Follow up...", type="delegate",
+            payload={"role": "researcher", "objective": "Now find Y"},
+        )
+        _delegate(action2, env, model=MockModel())
+
+        # Should have accumulated history from both delegations
+        saved2 = json.loads(sub_state.read_text())
+        assert len(saved2["full_history"]) > len(saved["full_history"])
+        print("  Delegate persists and restores state OK")
+
+
+def test_delegate_new_role_starts_fresh():
+    """Delegation to a new role starts with empty history."""
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        state_root = workspace / ".state"
+        state_root.mkdir(parents=True)
+        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+
+        action = Action(
+            response="Delegating...", type="delegate",
+            payload={"role": "new-role", "objective": "Do something"},
+        )
+        _delegate(action, env, model=MockModel())
+
+        saved = json.loads((state_root / "sub_agents" / "new-role.json").read_text())
+        # Fresh: only core_agent seed + sub_agent chat
+        assert len(saved["full_history"]) == 2
+        print("  Delegate new role starts fresh OK")
+
+
+def test_delegate_meta_registry_updated():
+    """Meta registry is created and updated on delegation."""
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        state_root = workspace / ".state"
+        state_root.mkdir(parents=True)
+        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+
+        _delegate(Action(
+            response="", type="delegate",
+            payload={"role": "researcher", "role_description": "Research papers", "objective": "Find X"},
+        ), env, model=MockModel())
+
+        _delegate(Action(
+            response="", type="delegate",
+            payload={"role": "reviewer", "role_description": "Code review", "objective": "Review Y"},
+        ), env, model=MockModel())
+
+        meta = _load_sub_agents_meta(state_root)
+        assert len(meta) == 2
+        roles = {e["role"] for e in meta}
+        assert roles == {"researcher", "reviewer"}
+        print("  Delegate meta registry updated OK")
+
+
+def test_delegate_role_description_updates_meta():
+    """Re-delegating with a new description updates the meta."""
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        state_root = workspace / ".state"
+        state_root.mkdir(parents=True)
+        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+
+        _delegate(Action(
+            response="", type="delegate",
+            payload={"role": "researcher", "role_description": "v1", "objective": "X"},
+        ), env, model=MockModel())
+
+        _delegate(Action(
+            response="", type="delegate",
+            payload={"role": "researcher", "role_description": "v2", "objective": "Y"},
+        ), env, model=MockModel())
+
+        meta = _load_sub_agents_meta(state_root)
+        assert len(meta) == 1
+        assert meta[0]["description"] == "v2"
+        print("  Delegate role_description updates meta OK")
+
+
+def test_delegate_without_state_root_still_works():
+    """Delegation works without state_root (no persistence)."""
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+
+    with tempfile.TemporaryDirectory() as td:
+        env = Environment(workspace=Path(td), mode="auto")
+        assert env.state_root is None
+        result = _delegate(Action(
+            response="", type="delegate",
+            payload={"role": "test", "objective": "Do something"},
+        ), env, model=MockModel())
+        assert "Done." in result
+        print("  Delegate without state_root OK")
+
+
+# =========================================================================== #
 # Runner
 # =========================================================================== #
 
@@ -297,5 +451,12 @@ if __name__ == "__main__":
     print("\n=== Full Delegation Loop ===")
     test_full_delegation_loop()
     test_delegate_with_exec_in_sub_agent()
+
+    print("\n=== Sub-Agent State Persistence ===")
+    test_delegate_persists_and_restores_state()
+    test_delegate_new_role_starts_fresh()
+    test_delegate_meta_registry_updated()
+    test_delegate_role_description_updates_meta()
+    test_delegate_without_state_root_still_works()
 
     print("\n✅ All delegation tests passed!")

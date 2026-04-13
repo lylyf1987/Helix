@@ -188,11 +188,20 @@ def _validate_exec_payload(payload: dict, raw_text: str) -> None:
             )
 
 
+_ROLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
 def _validate_delegate_payload(payload: dict, raw_text: str) -> None:
     """Validate delegate action_input has required fields."""
-    if not str(payload.get("role", "")).strip():
+    role = str(payload.get("role", "")).strip()
+    if not role:
         raise ActionParseError(
             "delegate action requires a non-empty 'role' field.",
+            raw_text=raw_text,
+        )
+    if not _ROLE_RE.fullmatch(role):
+        raise ActionParseError(
+            f"delegate role must match ^[A-Za-z0-9][A-Za-z0-9._-]*$, got '{role}'.",
             raw_text=raw_text,
         )
     if not str(payload.get("objective", "")).strip():
