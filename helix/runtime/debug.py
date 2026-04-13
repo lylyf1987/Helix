@@ -126,6 +126,39 @@ def render_session_view_html(
         white-space: pre-wrap;
         word-break: break-word;
       }}
+      .turn {{
+        margin: 0 0 12px;
+        padding: 10px 14px;
+        border-radius: 8px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        line-height: 1.55;
+      }}
+      .turn-user {{
+        background: rgba(46, 58, 89, 0.06);
+        border-left: 3px solid #6a7280;
+      }}
+      .turn-core_agent {{
+        background: transparent;
+        border-left: 3px solid var(--accent);
+      }}
+      .turn-runtime {{
+        background: rgba(46, 58, 89, 0.10);
+        border-left: 3px solid #8b6914;
+      }}
+      .turn-sub_agent {{
+        background: rgba(30, 106, 168, 0.06);
+        border-left: 3px solid #5b8abf;
+      }}
+      .turn-role {{
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 4px;
+        color: var(--muted);
+      }}
     </style>
   </head>
   <body>
@@ -163,28 +196,96 @@ def render_session_view_html(
 
     if field in {"full_history", "observation"}:
         turns = value if isinstance(value, list) else []
-        lines: list[str] = []
+        blocks: list[str] = []
         for turn in turns:
             if not isinstance(turn, dict):
                 continue
-            t = Turn(
-                role=str(turn.get("role", "unknown") or "unknown"),
-                content=str(turn.get("content", "") or ""),
-                timestamp=str(turn.get("timestamp", "") or ""),
+            role = str(turn.get("role", "unknown") or "unknown")
+            content = str(turn.get("content", "") or "")
+            timestamp = str(turn.get("timestamp", "") or "")
+            role_label = f"[{timestamp}] {role}" if timestamp else role
+            css_class = f"turn turn-{escape(role)}"
+            blocks.append(
+                f'<div class="{css_class}">'
+                f'<span class="badge">{escape(role_label)}</span>'
+                f'{escape(content)}</div>'
             )
-            prefix = f"[{t.timestamp}] {t.role}> "
-            content_lines = t.content.split("\n")
-            continuation = " " * len(prefix)
-            rendered = "\n".join(
-                [f"{prefix}{content_lines[0]}"]
-                + [f"{continuation}{cl}" for cl in content_lines[1:]]
-            )
-            lines.append(rendered)
-        body_text = "\n".join(lines) if lines else "(empty)"
-        return _render_text_view(
-            eyebrow="Agentic System Timeline View",
-            body_text=body_text,
-        )
+        body_html = "\n".join(blocks) if blocks else '<div class="empty">(empty)</div>'
+        title = escape(f"Session View - {session_id} - {field}")
+        return f"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{title}</title>
+    <style>
+      * {{ box-sizing: border-box; }}
+      body {{
+        margin: 0;
+        font-family: Menlo, Monaco, "SFMono-Regular", Consolas, monospace;
+        background: #1a1a2e;
+        color: #e8e8e8;
+      }}
+      main {{
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 32px 24px 48px;
+      }}
+      .header {{ margin-bottom: 24px; }}
+      .eyebrow {{
+        color: #5b9bd5;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+        margin-bottom: 10px;
+      }}
+      h1 {{ margin: 0 0 8px; font-size: 28px; line-height: 1.2; color: #ffffff; }}
+      .sub {{ margin: 0; color: #888; font-size: 14px; }}
+      .turn {{
+        margin: 0 0 8px;
+        padding: 12px 16px;
+        border-radius: 6px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #ffffff;
+      }}
+      .badge {{
+        display: inline-block;
+        font-weight: 700;
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        padding: 2px 8px;
+        border-radius: 3px;
+        margin-bottom: 6px;
+        color: #ffffff;
+      }}
+      .turn-user        {{ background: #585858; }}
+      .turn-user .badge  {{ background: #6e6e6e; }}
+      .turn-core_agent        {{ background: #005faf; }}
+      .turn-core_agent .badge  {{ background: #0073cc; }}
+      .turn-runtime        {{ background: #af5f00; }}
+      .turn-runtime .badge  {{ background: #c87000; }}
+      .turn-sub_agent        {{ background: #008700; }}
+      .turn-sub_agent .badge  {{ background: #00a000; }}
+      .empty {{ color: #888; padding: 20px; }}
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="header">
+        <div class="eyebrow">OpenHelix Timeline View</div>
+        <h1>{escape(field)}</h1>
+        <p class="sub">Session <strong>{escape(session_id)}</strong></p>
+      </div>
+      {body_html}
+    </main>
+  </body>
+</html>
+"""
 
     payload = {
         "session_id": session_id,

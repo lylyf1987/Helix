@@ -103,7 +103,7 @@ Scripts are idempotent and safe to re-run.
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/file-based-planning/scripts/init_planning.py",
+  "script_path": "skills/builtin_skills/file-based-planning/scripts/init_planning.py",
   "script_args": ["--project-name", "<brief-task-name>"]
 }
 ```
@@ -113,7 +113,7 @@ Scripts are idempotent and safe to re-run.
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/file-based-planning/scripts/check_complete.py"
+  "script_path": "skills/builtin_skills/file-based-planning/scripts/check_complete.py"
 }
 ```
 
@@ -122,7 +122,7 @@ Scripts are idempotent and safe to re-run.
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/file-based-planning/scripts/session_catchup.py",
+  "script_path": "skills/builtin_skills/file-based-planning/scripts/session_catchup.py",
   "script_args": []
 }
 ```
@@ -264,7 +264,7 @@ This skill references:
 
 # Templates
 
-Templates stored in `skills/all-agents/file-based-planning/templates/`:
+Templates stored in `skills/builtin_skills/file-based-planning/templates/`:
 
 - `task_plan.md` - Phase tracking template
 - `findings.md` - Research storage template

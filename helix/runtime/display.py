@@ -17,8 +17,6 @@ _JSON_ESCAPE_MAP = {
     "t": "\t",
 }
 
-TURN_SEPARATOR = "-" * 60
-
 _EXEC_PAYLOAD_ORDER = (
     "job_name",
     "code_type",
@@ -27,6 +25,68 @@ _EXEC_PAYLOAD_ORDER = (
     "script_args",
     "timeout_seconds",
 )
+
+# --------------------------------------------------------------------------- #
+# ANSI color scheme
+# --------------------------------------------------------------------------- #
+
+# ANSI styles
+_RESET = "\033[0m"
+_BOLD = "\033[1m"
+
+# Role prefix badges: bold + colored background + white text
+_BADGE = {
+    "user":       f"{_BOLD}\033[48;5;240m\033[38;5;255m",   # gray badge
+    "core_agent": f"{_BOLD}\033[48;5;25m\033[38;5;255m",    # blue badge
+    "runtime":    f"{_BOLD}\033[48;5;130m\033[38;5;255m",   # amber badge
+    "sub_agent":  f"{_BOLD}\033[48;5;28m\033[38;5;255m",    # green badge
+    "approval":   f"{_BOLD}\033[48;5;130m\033[38;5;255m",   # amber badge
+}
+
+
+def _write_role_block(role: str, text: str, output: TextIO) -> None:
+    """Write a block with a colored role badge prefix and content."""
+    if not text:
+        return
+    badge = _BADGE.get(role, f"{_BOLD}")
+
+    # Split into prefix (role>) and content
+    if "> " in text:
+        prefix, content = text.split("> ", 1)
+        prefix_text = f"{prefix}>"
+    else:
+        prefix_text = role
+        content = text
+
+    # Badge + content
+    output.write(f"{badge} {prefix_text} {_RESET} {content}")
+    if not content.endswith("\n"):
+        output.write("\n")
+    output.write("\n")
+    output.flush()
+
+
+def write_agent(text: str, output: Optional[TextIO] = None) -> None:
+    """Write agent output with blue badge prefix."""
+    stream = output if output is not None else sys.stdout
+    _write_role_block("core_agent", text, stream)
+
+
+def write_runtime(text: str, output: Optional[TextIO] = None) -> None:
+    """Write runtime output with amber badge prefix."""
+    stream = output if output is not None else sys.stdout
+    _write_role_block("runtime", text, stream)
+
+
+def write_approval(text: str, output: Optional[TextIO] = None) -> None:
+    """Write approval prompt with amber badge prefix."""
+    stream = output if output is not None else sys.stdout
+    _write_role_block("approval", text, stream)
+
+
+# --------------------------------------------------------------------------- #
+# Exec payload formatting
+# --------------------------------------------------------------------------- #
 
 
 def _has_display_value(value: Any) -> bool:
@@ -51,23 +111,9 @@ def iter_exec_payload_items(payload: dict[str, Any]) -> list[tuple[str, Any]]:
     return items
 
 
-def write_separator(output: Optional[TextIO] = None) -> None:
-    """Write the standard requester-facing separator line."""
-    stream = output if output is not None else sys.stdout
-    stream.write(f"{TURN_SEPARATOR}\n")
-    stream.flush()
-
-
-def write_framed_text(text: str, output: Optional[TextIO] = None) -> None:
-    """Write one requester-facing block framed by separator lines."""
-    stream = output if output is not None else sys.stdout
-    body = str(text)
-    write_separator(stream)
-    stream.write(body)
-    if not body.endswith("\n"):
-        stream.write("\n")
-    write_separator(stream)
-    stream.flush()
+# --------------------------------------------------------------------------- #
+# Streaming response extraction
+# --------------------------------------------------------------------------- #
 
 
 def extract_streaming_response(partial_text: str) -> Optional[str]:
@@ -123,6 +169,11 @@ def extract_streaming_response(partial_text: str) -> Optional[str]:
     return "".join(result_chars) if result_chars else None
 
 
+# --------------------------------------------------------------------------- #
+# Streaming display
+# --------------------------------------------------------------------------- #
+
+
 class StreamingDisplay:
     """Stateful streaming callback that buffers only the parsed response.
 
@@ -152,11 +203,11 @@ class StreamingDisplay:
         self._current_name = name
 
     def commit(self) -> None:
-        """Print the buffered response after successful parsing."""
+        """Print the buffered response as agent output."""
         if not self._response_text:
             return
         output = self._output if self._output is not None else sys.stdout
-        write_framed_text(f"{self._current_name}> {self._response_text}", output)
+        write_agent(f"{self._current_name}> {self._response_text}", output)
 
     def discard(self) -> None:
         """Drop any buffered response from a failed parse attempt."""

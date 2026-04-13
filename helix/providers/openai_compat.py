@@ -14,6 +14,26 @@ from typing import Any, Callable, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+class LLMProviderError(RuntimeError):
+    """Base for all LLM provider errors."""
+
+    def __init__(self, message: str, *, status_code: int | None = None, retry_after: float | None = None) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+        self.retry_after = retry_after
+
+
+class LLMTransientError(LLMProviderError):
+    """Transient provider error — caller should retry (429, 5xx, network)."""
+
+
+class LLMPermanentError(LLMProviderError):
+    """Permanent provider error — do not retry (401, 403, 404, other 4xx)."""
+
+
+_TRANSIENT_HTTP_CODES = {429, 500, 502, 503, 504}
+
+
 class LLMProvider:
     """Universal LLM provider for OpenAI-compatible chat completions endpoints."""
 
@@ -78,9 +98,19 @@ class LLMProvider:
             return "".join(parts)
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"LLM HTTP {exc.code}: {body}") from exc
+            msg = f"LLM HTTP {exc.code}: {body}"
+            if exc.code in _TRANSIENT_HTTP_CODES:
+                retry_after = None
+                raw = exc.headers.get("Retry-After") if exc.headers else None
+                if raw:
+                    try:
+                        retry_after = float(raw)
+                    except (ValueError, TypeError):
+                        pass
+                raise LLMTransientError(msg, status_code=exc.code, retry_after=retry_after) from exc
+            raise LLMPermanentError(msg, status_code=exc.code) from exc
         except (URLError, TimeoutError, socket.timeout, ConnectionError, RemoteDisconnected, ssl.SSLError) as exc:
-            raise RuntimeError(f"LLM network error: {exc}") from exc
+            raise LLMTransientError(f"LLM network error: {exc}") from exc
 
     @staticmethod
     def _extract_stream_piece(data: dict[str, Any]) -> str:

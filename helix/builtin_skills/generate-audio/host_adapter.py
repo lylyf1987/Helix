@@ -45,15 +45,10 @@ class _SpecQwenTTSCustomVoiceBackend(_BaseBackend):
             raise _MissingHostDependencyError(
                 "SoX is required for Qwen3-TTS host inference. Install it on the host with `brew install sox`."
             )
-        try:
-            import torch
-            import soundfile as sf
-            from qwen_tts import Qwen3TTSModel
-        except ImportError:
-            _ensure_worker_dependencies(self.python_bin, _PYTORCH_TEXT_TO_AUDIO_DEPENDENCIES)
-            import torch
-            import soundfile as sf
-            from qwen_tts import Qwen3TTSModel
+        _ensure_worker_dependencies(self.python_bin, _PYTORCH_TEXT_TO_AUDIO_DEPENDENCIES)
+        import torch
+        import soundfile as sf
+        from qwen_tts import Qwen3TTSModel
 
         self.soundfile = sf
         self.torch = torch

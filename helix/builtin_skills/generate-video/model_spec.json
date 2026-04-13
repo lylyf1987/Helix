@@ -1,7 +1,7 @@
 {
   "backend": "pytorch",
   "source": {
-    "repo_id": "Wan-AI/Wan2.1-T2V-14B-Diffusers"
+    "repo_id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
   },
   "download_manifest": {
     "include": [],

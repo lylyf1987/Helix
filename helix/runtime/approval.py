@@ -8,7 +8,7 @@ from typing import Callable, Optional
 from helix.core.action import Action
 from helix.core.environment import ApprovalResult, Environment
 from helix.core.state import Turn
-from helix.runtime.display import iter_exec_payload_items, write_framed_text
+from helix.runtime.display import iter_exec_payload_items, write_approval
 
 
 PromptFn = Callable[[str], str]
@@ -118,10 +118,11 @@ class ApprovalPolicy:
                 "  k: allow same script_path for this session (ignore args)",
                 "  p: unavailable for script_path executions",
             ])
-        write_framed_text("\n".join(details), None)
+        write_approval("\n".join(details), None)
 
         try:
             choice = self._prompt("> ").strip().lower()
+            print()  # blank line after approval input
         except EOFError:
             return Turn(
                 role="runtime",
@@ -140,7 +141,7 @@ class ApprovalPolicy:
             return True
         if choice in {"p", "pattern"}:
             if not pattern_key:
-                write_framed_text(
+                write_approval(
                     "runtime> 'p' requires an inline script. Use 's' or 'k' for script_path.",
                     None,
                 )
@@ -155,7 +156,7 @@ class ApprovalPolicy:
                 self.approved_paths.add(action.payload["script_path"])
                 return True
             else:
-                write_framed_text("runtime> 'k' requires a script_path. Denied.", None)
+                write_approval("runtime> 'k' requires a script_path. Denied.", None)
                 return Turn(
                     role="runtime",
                     content="Execution denied by requester during approval prompt.",

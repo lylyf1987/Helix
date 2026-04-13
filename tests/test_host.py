@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from helix.runtime.host import RuntimeHost
 from helix.providers.openai_compat import LLMProvider
-from helix.runtime.display import TURN_SEPARATOR, extract_streaming_response
+from helix.runtime.display import extract_streaming_response
 from helix.runtime.cli import build_parser, main as cli_main
 from helix.core.environment import Environment
 from helix.core.state import Turn
@@ -320,9 +320,8 @@ def test_host_command_full_history():
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.full_history.html"
         assert result == f"Opened session view: {path.resolve()}"
         text = path.read_text(encoding="utf-8")
-        assert "Agentic System Timeline View" in text
-        assert '"value"' not in text
-        assert "[2026-03-10 00:41:55] user&gt; Hello" in text
+        assert "OpenHelix Timeline View" in text
+        assert "turn-user" in text
         assert "Hello" in text
         print("  /full_history command OK")
 
@@ -337,9 +336,8 @@ def test_host_command_observation():
         path = Path(td) / "sessions" / "debug-01" / ".state" / "views" / "debug-01.observation.html"
         assert result == f"Opened session view: {path.resolve()}"
         text = path.read_text(encoding="utf-8")
-        assert "Agentic System Timeline View" in text
-        assert '"value"' not in text
-        assert "] user&gt; Hello" in text
+        assert "OpenHelix Timeline View" in text
+        assert "turn-user" in text
         assert "Hello" in text
         print("  /observation command OK")
 
@@ -465,7 +463,7 @@ def test_host_process_message():
 
         # Requester-facing UI should not include action metadata
         assert "Hello agent!" not in output
-        assert f"{TURN_SEPARATOR}\ncore_agent> Hello from the agent!\n{TURN_SEPARATOR}" in output
+        assert "Hello from the agent!" in output
         assert "[next_action]" not in output
         assert "[action_input]" not in output
 
@@ -554,8 +552,8 @@ def test_host_process_exec():
         assert len(runtime_turns) == 1
         assert "test-output" in runtime_turns[0].content
         assert "Run a test" not in output
-        assert f"{TURN_SEPARATOR}\ncore_agent> Let me check.\n{TURN_SEPARATOR}" in output
-        assert f"{TURN_SEPARATOR}\ncore_agent> Done!\n{TURN_SEPARATOR}" in output
+        assert "Let me check." in output
+        assert "Done!" in output
 
         print("  Exec processing OK")
 
@@ -575,8 +573,7 @@ def test_host_process_message_runtime_error():
             host._process_message("Who are you?")
 
         output = captured.getvalue()
-        assert f"{TURN_SEPARATOR}\nruntime> Agent error: Missing API key for provider 'zai'" in output
-        assert TURN_SEPARATOR in output
+        assert "Agent error: Missing API key for provider 'zai'" in output
         runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
         assert len(runtime_turns) == 1
         assert "Missing API key for provider 'zai'" in runtime_turns[0].content
@@ -624,7 +621,6 @@ def test_host_process_message_discards_parse_failed_preview():
         output = captured.getvalue()
         assert "Discard this preview" not in output
         assert "Keep this final answer" in output
-        assert TURN_SEPARATOR in output
 
         runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
         assert len(runtime_turns) == 1
@@ -719,16 +715,18 @@ def test_streaming_extractor_not_yet():
 
 
 if __name__ == "__main__":
-    print("=== Provider Factory ===")
-    test_provider_factory_default()
-    test_provider_factory_custom_base_url()
-    test_provider_factory_with_model()
-    test_provider_factory_with_api_key()
+    print("=== LLMProvider ===")
+    test_provider_init()
+    test_provider_custom_endpoint()
+    test_provider_with_api_key()
 
     print("\n=== RuntimeHost Init ===")
+    test_host_uses_docker_when_available()
+    test_host_requires_docker_when_unavailable()
     test_host_init()
     test_host_init_controlled()
     test_host_init_with_session_id_loads_existing_state()
+    test_host_bootstrap_prunes_renamed_packaged_skills()
 
     print("\n=== Slash Commands ===")
     test_host_command_help()

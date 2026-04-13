@@ -44,15 +44,10 @@ class _WanVideoBackend(_BaseBackend):
     def _load(self) -> None:
         assert self.python_bin is not None
         assert self.model_root is not None
-        try:
-            import torch
-            from diffusers import AutoencoderKLWan, WanPipeline
-            from diffusers.utils import export_to_video, load_image
-        except ImportError:
-            _ensure_worker_dependencies(self.python_bin, _DEPENDENCIES)
-            import torch
-            from diffusers import AutoencoderKLWan, WanPipeline
-            from diffusers.utils import export_to_video, load_image
+        _ensure_worker_dependencies(self.python_bin, _DEPENDENCIES)
+        import torch
+        from diffusers import AutoencoderKLWan, WanPipeline
+        from diffusers.utils import export_to_video, load_image
 
         device = "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else "cpu"
         dtype = torch.float16 if device == "mps" else torch.float32

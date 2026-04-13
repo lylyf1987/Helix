@@ -21,7 +21,10 @@ def _worker_main(args) -> int:
     registry = AdapterRegistry()
     skills_root = str(getattr(args, "skills_root", "") or "").strip()
     if skills_root:
-        registry.discover(Path(skills_root))
+        discovered = registry.discover(Path(skills_root))
+        print(f"worker: skills_root={skills_root}, discovered={discovered}", file=sys.stderr, flush=True)
+    else:
+        print("worker: no --skills-root provided, adapter registry is empty", file=sys.stderr, flush=True)
 
     service_root = Path(args.service_root).expanduser().resolve()
     python_bin = Path(sys.executable).resolve()

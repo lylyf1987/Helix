@@ -248,28 +248,38 @@ class Agent:
     # ----- prompt construction --------------------------------------------- #
 
     def _build_messages(self, state: State) -> list[dict[str, str]]:
-        """Build the OpenAI chat messages array from system prompt + state.
+        """Build the chat messages array from system prompt + structured state.
 
-        System message = system_prompt + workflow_summary (long-term memory).
-        Adjacent turns that map to the same API role are merged so the
-        array always alternates between ``user`` and ``assistant``.
-        Each turn is prefixed with ``[role]`` so the LLM can still
-        distinguish the original source.
+        Uses a two-message structure:
+        1. system: the full system prompt (instructions, skills, actions, format).
+        2. user: structured context with XML-tagged sections:
+           - <workflow_summary> for compacted long-term memory.
+           - <workflow_history> for recent turn trace.
+           - <latest_context> for the immediate turn to address.
         """
         self.system_prompt = _build_system_prompt(**self._workspace_prompt_args)
-        system_content = self.system_prompt
-        if state.workflow_summary:
-            system_content += (
-                "\n\n## Workflow Summary (long-term memory)\n"
-                + state.workflow_summary
-            )
+        messages: list[dict[str, str]] = [{"role": "system", "content": self.system_prompt}]
 
-        messages: list[dict[str, str]] = [{"role": "system", "content": system_content}]
-        for turn in state.observation:
-            api_role = "user" if turn.role in ("user", "runtime") else "assistant"
-            content = f"[{turn.role}] {turn.content}"
-            if len(messages) > 1 and messages[-1]["role"] == api_role:
-                messages[-1]["content"] += "\n\n" + content
-            else:
-                messages.append({"role": api_role, "content": content})
+        parts: list[str] = []
+        if state.workflow_summary:
+            parts.append(f"<workflow_summary>\n{state.workflow_summary}\n</workflow_summary>")
+
+        history = state.observation[:-1] if len(state.observation) > 1 else []
+        latest = state.observation[-1:] if state.observation else []
+
+        if history:
+            lines: list[str] = []
+            for t in history:
+                prefix = f"[{t.timestamp}] " if t.timestamp else ""
+                lines.append(f"{prefix}{t.role}> {t.content}")
+            parts.append(f"<workflow_history>\n" + "\n".join(lines) + "\n</workflow_history>")
+
+        if latest:
+            t = latest[0]
+            prefix = f"[{t.timestamp}] " if t.timestamp else ""
+            parts.append(f"<latest_context>\n{prefix}{t.role}> {t.content}\n</latest_context>")
+
+        if parts:
+            messages.append({"role": "user", "content": "\n\n".join(parts)})
+
         return messages

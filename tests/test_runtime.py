@@ -15,7 +15,6 @@ from helix.runtime.host import docker_is_available
 from helpers import sandbox_executor
 from helix.core.state import Turn
 from helix.runtime.approval import ApprovalPolicy
-from helix.runtime.display import TURN_SEPARATOR
 from helix.runtime.loop import _format_agent_record
 
 
@@ -280,9 +279,8 @@ def test_approval_prompt_prints_separator_before_input():
         assert policy(env, action) is True
 
     output = captured.getvalue()
-    assert f"{TURN_SEPARATOR}\nruntime> Action requires approval:" in output
-    assert TURN_SEPARATOR in output
-    assert f"{TURN_SEPARATOR}\n> " in output
+    assert "Action requires approval:" in output
+    assert "> " in output
     print("  Approval separator before input OK")
 
 

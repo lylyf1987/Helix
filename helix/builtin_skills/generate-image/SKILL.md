@@ -27,7 +27,7 @@ Skip when:
   - `scripts/prepare_model.py`: prepare/download/warm the built-in image model before generation
   - `scripts/generate_image.py`: run the actual image inference and save the output artifact
 - Core Agent should call this skill directly instead of passing provider/model config through Helix CLI.
-- Default handler path: `skills/all-agents/generate-image/scripts/prepare_model.py`
+- Default handler path: `skills/builtin_skills/generate-image/scripts/prepare_model.py`
 
 # Procedure
 
@@ -70,7 +70,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 {
   "code_type": "python",
   "timeout_seconds": 1800,
-  "script_path": "skills/all-agents/generate-image/scripts/prepare_model.py",
+  "script_path": "skills/builtin_skills/generate-image/scripts/prepare_model.py",
   "script_args": [
     "--timeout", "1200"
   ]
@@ -98,7 +98,7 @@ Example inference using `--output-dir`:
 {
   "code_type": "python",
   "timeout_seconds": 1800,
-  "script_path": "skills/all-agents/generate-image/scripts/generate_image.py",
+  "script_path": "skills/builtin_skills/generate-image/scripts/generate_image.py",
   "script_args": [
     "--prompt", "A clean product hero banner with warm afternoon light",
     "--output-dir", "generated_images/hero-banner",
@@ -113,7 +113,7 @@ Example inference using `--output-path`:
 {
   "code_type": "python",
   "timeout_seconds": 1800,
-  "script_path": "skills/all-agents/generate-image/scripts/generate_image.py",
+  "script_path": "skills/builtin_skills/generate-image/scripts/generate_image.py",
   "script_args": [
     "--prompt", "A minimal monochrome icon set for analytics dashboards",
     "--output-path", "generated_images/icons/analytics-set.png",

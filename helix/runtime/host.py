@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.styles import Style
 
 from ..core.agent import Agent
 from ..core.compactor import Compactor
@@ -35,7 +36,7 @@ from ..services.searxng import discover as discover_searxng
 from ..services.local_model_service import discover as discover_lms
 from .loop import run_loop
 from .approval import ApprovalPolicy
-from .display import StreamingDisplay, write_framed_text
+from .display import StreamingDisplay, write_runtime
 from .debug import render_session_view_html, open_file_in_viewer
 
 
@@ -214,7 +215,10 @@ class RuntimeHost:
         def _submit(event: Any) -> None:
             event.app.exit(result=event.app.current_buffer.text)
 
-        return PromptSession(key_bindings=bindings)
+        style = Style.from_dict({
+            "badge": "bold bg:#585858 #ffffff",
+        })
+        return PromptSession(key_bindings=bindings, style=style)
 
     def _prompt_approval_choice(self, prompt_text: str) -> str:
         """Read approval input using the same Ctrl+D/Ctrl+C semantics as user input."""
@@ -304,7 +308,7 @@ class RuntimeHost:
                 # Read user input
                 try:
                     user_input = self._user_input_session.prompt(
-                        "user> ",
+                        [("class:badge", " user> "), ("", " ")],
                         multiline=True,
                         prompt_continuation=lambda _w, _n, _s: "... ",
                     )
@@ -336,6 +340,7 @@ class RuntimeHost:
 
     def _process_message(self, user_text: str) -> None:
         """Record user message and run the agent loop to completion."""
+        print()  # blank line after user input
         self._env.record(Turn(role="user", content=user_text))
         display = StreamingDisplay()
 
@@ -351,7 +356,7 @@ class RuntimeHost:
             )
         except RuntimeError as exc:
             message = f"Agent error: {exc}"
-            write_framed_text(f"runtime> {message}", sys.stdout)
+            write_runtime(f"runtime> {message}", sys.stdout)
             self._env.record(Turn(role="runtime", content=message))
         finally:
             # Persist state after each interaction

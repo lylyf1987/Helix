@@ -251,7 +251,7 @@ def _ensure_worker_dependencies(python_bin: Path, dependencies: tuple[str, ...])
     if not dependencies:
         return
     completed = subprocess.run(
-        [str(python_bin), "-m", "pip", "install", *dependencies],
+        [str(python_bin), "-m", "pip", "install", "--upgrade", *dependencies],
         stdout=subprocess.PIPE, stderr=subprocess.PIPE,
         text=True, check=False,
     )

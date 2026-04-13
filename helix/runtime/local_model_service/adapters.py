@@ -53,40 +53,48 @@ class AdapterRegistry:
     """
 
     def __init__(self) -> None:
-        self._registry: dict[str, Callable[..., _BaseBackend]] = {}
+        self._registry: dict[str, Path | Callable[..., _BaseBackend]] = {}
 
     def discover(self, skills_root: Path) -> list[str]:
-        """Scan skills for host adapters and register them.
+        """Scan skills for host adapters and register their paths.
 
-        Returns a list of registered skill names.
+        Adapters are loaded lazily when ``build_backend()`` is called.
+        Returns a list of discovered skill names.
         """
-        registered: list[str] = []
+        discovered: list[str] = []
         skills_root = Path(skills_root).expanduser().resolve()
         if not skills_root.is_dir():
-            return registered
+            return discovered
         for adapter_path in sorted(skills_root.rglob("host_adapter.py")):
-            try:
-                module = self._load_module(adapter_path)
-            except Exception:
-                continue
-            factory = getattr(module, "create_adapter", None)
-            if factory is None:
-                continue
             skill_name = adapter_path.parent.name
-            self._registry[skill_name] = factory
-            registered.append(skill_name)
-        return registered
+            self._registry[skill_name] = adapter_path
+            discovered.append(skill_name)
+        return discovered
 
     def build_backend(
         self, *, skill_name: str, task_type: str, backend: str,
         model_id: str, cache_root: Path, python_bin: Path,
         model_spec: dict[str, Any] | None = None, model_root: Path | None = None,
     ) -> _BaseBackend:
-        """Create a backend instance for the given skill."""
-        factory = self._registry.get(skill_name)
-        if factory is None:
-            raise ValueError(f"no adapter registered for skill: {skill_name}")
-        return factory(
+        """Create a backend instance for the given skill.
+
+        Loads the adapter module on first use, raising a clear error
+        if the module cannot be imported.
+        """
+        entry = self._registry.get(skill_name)
+        if entry is None:
+            raise ValueError(f"no adapter discovered for skill: {skill_name}")
+        # Lazy load: resolve Path → factory on first call
+        if isinstance(entry, Path):
+            module = self._load_module(entry)
+            factory = getattr(module, "create_adapter", None)
+            if factory is None:
+                raise ValueError(
+                    f"adapter for skill {skill_name!r} has no create_adapter() function: {entry}"
+                )
+            self._registry[skill_name] = factory
+            entry = factory
+        return entry(
             task_type=task_type, backend=backend, model_id=model_id,
             model_spec=model_spec, model_root=model_root,
             cache_root=cache_root, python_bin=python_bin,

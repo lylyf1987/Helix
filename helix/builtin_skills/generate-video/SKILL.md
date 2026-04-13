@@ -53,7 +53,7 @@ Core Agent should stay inside the supported surface above and should not invent 
   - `scripts/prepare_model.py`: prepare/download/warm the built-in video model before generation
   - `scripts/generate_video.py`: run the actual video inference and save the output artifact
 - Core Agent should call this skill directly instead of passing provider/model config through Helix CLI.
-- Default handler path: `skills/all-agents/generate-video/scripts/prepare_model.py`
+- Default handler path: `skills/builtin_skills/generate-video/scripts/prepare_model.py`
 
 # Procedure
 
@@ -99,7 +99,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 {
   "code_type": "python",
   "timeout_seconds": 1800,
-  "script_path": "skills/all-agents/generate-video/scripts/prepare_model.py",
+  "script_path": "skills/builtin_skills/generate-video/scripts/prepare_model.py",
   "script_args": [
     "--timeout", "1200"
   ]
@@ -208,7 +208,7 @@ Example text-to-video:
 {
   "code_type": "python",
   "timeout_seconds": 1800,
-  "script_path": "skills/all-agents/generate-video/scripts/generate_video.py",
+  "script_path": "skills/builtin_skills/generate-video/scripts/generate_video.py",
   "script_args": [
     "--prompt", "Two anthropomorphic cats in comfy boxing gear and bright gloves fight intensely on a spotlighted stage.",
     "--size", "704x512",
@@ -232,7 +232,7 @@ Example text-image-to-video:
 {
   "code_type": "python",
   "timeout_seconds": 1800,
-  "script_path": "skills/all-agents/generate-video/scripts/generate_video.py",
+  "script_path": "skills/builtin_skills/generate-video/scripts/generate_video.py",
   "script_args": [
     "--prompt", "A calm cinematic aerial reveal of this house at sunset.",
     "--image-path", "sessions/test_1/project/reference-house.png",

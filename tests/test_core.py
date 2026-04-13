@@ -20,7 +20,6 @@ from helix.core.action import (
 from helix.core.agent import Agent
 from helix.core.compactor import Compactor
 from helix.core.environment import Environment
-from helix.runtime.display import TURN_SEPARATOR
 from helix.runtime.loop import run_loop
 from helix.runtime.approval import ApprovalPolicy
 
@@ -210,7 +209,7 @@ def test_environment_compaction():
         print("  Compaction OK")
 
 
-def test_agent_messages_keeps_summary_in_system_and_turns_in_conversation():
+def test_agent_messages_structured_context():
     state = State(
         observation=[
             Turn(role="runtime", content="Job succeeded."),
@@ -223,15 +222,20 @@ def test_agent_messages_keeps_summary_in_system_and_turns_in_conversation():
 
         messages = agent._build_messages(state)
 
-        # System message contains the workflow summary
+        # System prompt is clean (no summary mixed in)
         assert messages[0]["role"] == "system"
-        assert "## Summary\nCompacted" in messages[0]["content"]
-        # Conversation turns are present with correct roles
-        contents = [m["content"] for m in messages[1:]]
-        all_content = "\n".join(contents)
-        assert "Job succeeded." in all_content
-        assert "what now?" in all_content
-        print("  Messages keep summary in system and turns in conversation OK")
+        assert "## Summary\nCompacted" not in messages[0]["content"]
+        # Structured context in single user message
+        assert len(messages) == 2
+        assert messages[1]["role"] == "user"
+        ctx = messages[1]["content"]
+        assert "<workflow_summary>" in ctx
+        assert "## Summary\nCompacted" in ctx
+        assert "<workflow_history>" in ctx
+        assert "runtime> Job succeeded." in ctx
+        assert "<latest_context>" in ctx
+        assert "user> what now?" in ctx
+        print("  Structured context (summary + history + latest) OK")
 
 
 def test_environment_compaction_error():
@@ -299,8 +303,7 @@ def test_run_loop_compaction_failure_is_ui_only():
 
         assert "compaction failed" in result.lower()
         assert compactor_model.calls == 3
-        assert f"{TURN_SEPARATOR}\nruntime> Session paused:" in captured.getvalue()
-        assert TURN_SEPARATOR in captured.getvalue()
+        assert "Session paused:" in captured.getvalue()
         assert len(env.full_history) == 2
         assert len(env.observation) == 2
         assert all("compaction failed" not in t.content.lower() for t in env.full_history)
@@ -460,6 +463,92 @@ def test_run_loop_exec_cancelled_returns_control():
         print("  run_loop (exec cancelled returns control) OK")
 
 
+def test_run_loop_transient_error_retries_then_succeeds():
+    """Transient LLM error should retry without recording a Turn."""
+    from helix.providers.openai_compat import LLMTransientError
+    from unittest.mock import patch
+
+    call_count = [0]
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                raise LLMTransientError("LLM HTTP 503: overloaded", status_code=503)
+            return '<output>{"response": "Recovered!", "action": "chat", "action_input": {}}</output>'
+
+    with tempfile.TemporaryDirectory() as td:
+        env = Environment(workspace=Path(td))
+        env.record(Turn(role="user", content="test"))
+        agent = Agent(MockModel(), workspace=Path(td))
+        captured = StringIO()
+        with patch("helix.runtime.loop.time.sleep"):
+            result = run_loop(agent, env, output=captured)
+
+        assert result == "Recovered!"
+        assert call_count[0] == 2
+        # No transient error recorded as Turn — only user + agent
+        assert len(env.full_history) == 2
+        assert all(t.role != "runtime" for t in env.full_history)
+        assert "retrying" in captured.getvalue().lower()
+        print("  run_loop (transient retry → success) OK")
+
+
+def test_run_loop_transient_error_exhausts_retries():
+    """After max retries, transient error should propagate."""
+    from helix.providers.openai_compat import LLMTransientError
+    from helix.runtime.loop import DEFAULT_LLM_RETRIES
+    from unittest.mock import patch
+
+    call_count = [0]
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            call_count[0] += 1
+            raise LLMTransientError("LLM HTTP 429: rate limited", status_code=429)
+
+    with tempfile.TemporaryDirectory() as td:
+        env = Environment(workspace=Path(td))
+        env.record(Turn(role="user", content="test"))
+        agent = Agent(MockModel(), workspace=Path(td))
+        with patch("helix.runtime.loop.time.sleep"):
+            try:
+                run_loop(agent, env, output=StringIO())
+                assert False, "Expected LLMTransientError to propagate"
+            except LLMTransientError:
+                pass
+
+        assert call_count[0] == DEFAULT_LLM_RETRIES
+        # No error Turns recorded
+        assert len(env.full_history) == 1  # only user turn
+        print("  run_loop (transient retry exhausted) OK")
+
+
+def test_run_loop_permanent_error_no_retry():
+    """Permanent LLM error should propagate immediately without retry."""
+    from helix.providers.openai_compat import LLMPermanentError
+
+    call_count = [0]
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            call_count[0] += 1
+            raise LLMPermanentError("LLM HTTP 401: unauthorized", status_code=401)
+
+    with tempfile.TemporaryDirectory() as td:
+        env = Environment(workspace=Path(td))
+        env.record(Turn(role="user", content="test"))
+        agent = Agent(MockModel(), workspace=Path(td))
+        try:
+            run_loop(agent, env, output=StringIO())
+            assert False, "Expected LLMPermanentError to propagate"
+        except LLMPermanentError:
+            pass
+
+        assert call_count[0] == 1  # no retry
+        print("  run_loop (permanent error no retry) OK")
+
+
 if __name__ == "__main__":
     print("=== State & Turn ===")
     test_turn_creation()
@@ -469,6 +558,8 @@ if __name__ == "__main__":
     test_parse_chat()
     test_parse_think()
     test_parse_exec()
+    test_parse_exec_script_args_array()
+    test_parse_exec_script_args_string()
     test_parse_delegate()
 
     print("\n=== Parse Errors ===")
@@ -477,16 +568,16 @@ if __name__ == "__main__":
     test_parse_error_invalid_action()
     test_parse_error_exec_missing_script()
     test_parse_error_exec_both_script_and_path()
+    test_parse_error_exec_invalid_script_args_type()
+    test_parse_error_exec_script_args_with_script()
     test_parse_error_delegate_missing_role()
     test_sub_agent_cannot_delegate()
-
-
 
     print("\n=== Environment ===")
     test_environment_dual_history()
     test_environment_build_state()
     test_environment_compaction()
-    test_agent_messages_keeps_summary_in_system_and_turns_in_conversation()
+    test_agent_messages_structured_context()
     test_environment_compaction_error()
     test_environment_persistence()
 
@@ -497,5 +588,11 @@ if __name__ == "__main__":
     test_run_loop_max_retries()
     test_run_loop_exec_denied_returns_control()
     test_run_loop_exec_cancelled_returns_control()
+    test_run_loop_compaction_failure_is_ui_only()
+
+    print("\n=== LLM Provider Retry ===")
+    test_run_loop_transient_error_retries_then_succeeds()
+    test_run_loop_transient_error_exhausts_retries()
+    test_run_loop_permanent_error_no_retry()
 
     print("\n✅ All Phase 1 tests passed!")

@@ -27,6 +27,7 @@ _MLX_DEPENDENCIES = (
     "pillow",
     "safetensors",
     "torch",
+    "torchvision",
     "transformers",
     "tqdm",
 )
@@ -41,11 +42,7 @@ class _MLXZImageBackend(_BaseBackend):
         assert self.python_bin is not None
         assert self.model_root is not None
         assert self.model_spec is not None
-        try:
-            import mlx  # noqa: F401
-        except ImportError:
-            _ensure_worker_dependencies(self.python_bin, _MLX_DEPENDENCIES)
-            import mlx  # noqa: F401
+        _ensure_worker_dependencies(self.python_bin, _MLX_DEPENDENCIES)
 
         # Locate pre-downloaded source files
         sources = self.model_spec.get("sources", {})
@@ -57,7 +54,7 @@ class _MLXZImageBackend(_BaseBackend):
         if not source_root.exists():
             raise RuntimeError(
                 f"MLX runner sources not found at {source_root}. "
-                "Run: helix model download --spec <path-to-model_spec.json>"
+                "Run: helix model download --skill generate-image"
             )
         if str(source_root) not in sys.path:
             sys.path.insert(0, str(source_root))

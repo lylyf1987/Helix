@@ -6,7 +6,7 @@ Usage::
     helix start local-model-service --workspace ~/agent
     helix stop searxng
     helix status
-    helix model download --spec model_spec.json
+    helix model download --skill generate-image
     helix --endpoint-url http://localhost:11434/v1 --model llama3.1:8b --workspace ~/agent --session-id project-01
 """
 

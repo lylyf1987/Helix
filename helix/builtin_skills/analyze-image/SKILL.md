@@ -24,7 +24,7 @@ Skip when:
 - `script_mode: single`
 - This is a backend-owned capability skill with one primary deterministic runtime script.
 - Core Agent should call this skill directly instead of passing provider or model config through Helix CLI.
-- Script path: `skills/all-agents/analyze-image/scripts/analyze_image.py`
+- Script path: `skills/builtin_skills/analyze-image/scripts/analyze_image.py`
 
 # Procedure
 
@@ -66,7 +66,7 @@ Example using a local file:
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/analyze-image/scripts/analyze_image.py",
+  "script_path": "skills/builtin_skills/analyze-image/scripts/analyze_image.py",
   "script_args": [
     "--image-path", "assets/banner.jpg",
     "--query", "Extract the visible title text and key layout regions"
@@ -79,7 +79,7 @@ Example using a remote image:
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/analyze-image/scripts/analyze_image.py",
+  "script_path": "skills/builtin_skills/analyze-image/scripts/analyze_image.py",
   "script_args": [
     "--image-url", "https://example.com/sample-doc.png",
     "--query", "Extract the visible text and describe the document structure"

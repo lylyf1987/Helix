@@ -294,6 +294,7 @@ if __name__ == "__main__":
 
     print("\n=== Bootstrap ===")
     test_bootstrap_skills()
+    test_bootstrap_prunes_renamed_packaged_skills_but_keeps_user_skills()
     test_bootstrapped_prompt_builder()
 
     print("\n=== Full Pipeline ===")

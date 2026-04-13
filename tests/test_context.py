@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from helix.providers.openai_compat import LLMProvider
+from helix.providers.openai_compat import LLMProvider, LLMTransientError, LLMPermanentError
 from helix.core.agent import Agent
 from helix.core.agent import _load_skills as load_skills
 from helix.core.agent import _build_system_prompt
@@ -79,7 +79,7 @@ class _MockHTTPResponse:
         return self._body
 
 
-def test_llm_provider_stream_timeout_wrapped_as_runtime_error():
+def test_llm_provider_stream_timeout_raises_transient_error():
     provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
 
     with patch(
@@ -88,14 +88,15 @@ def test_llm_provider_stream_timeout_wrapped_as_runtime_error():
     ):
         try:
             provider.generate([{"role": "user", "content": "hello"}])
-            assert False, "Expected streaming timeout to raise RuntimeError"
-        except RuntimeError as exc:
+            assert False, "Expected streaming timeout to raise LLMTransientError"
+        except LLMTransientError as exc:
             assert "LLM network error" in str(exc)
             assert "read timed out" in str(exc)
-    print("  LLMProvider stream timeout wrapping OK")
+            assert isinstance(exc, RuntimeError)  # backwards compatible
+    print("  LLMProvider stream timeout → LLMTransientError OK")
 
 
-def test_llm_provider_stream_disconnect_wrapped_as_runtime_error():
+def test_llm_provider_stream_disconnect_raises_transient_error():
     provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
 
     with patch(
@@ -104,12 +105,60 @@ def test_llm_provider_stream_disconnect_wrapped_as_runtime_error():
     ):
         try:
             provider.generate([{"role": "user", "content": "hello"}])
-            assert False, "Expected stream disconnect to raise RuntimeError"
-        except RuntimeError as exc:
+            assert False, "Expected stream disconnect to raise LLMTransientError"
+        except LLMTransientError as exc:
             assert "LLM network error" in str(exc)
             assert "closed" in str(exc)
-    print("  LLMProvider stream disconnect wrapping OK")
+            assert isinstance(exc, RuntimeError)
+    print("  LLMProvider stream disconnect → LLMTransientError OK")
 
+
+def test_llm_provider_429_raises_transient_with_retry_after():
+    from urllib.error import HTTPError
+    from io import BytesIO
+    from email.message import Message
+
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
+    headers = Message()
+    headers["Retry-After"] = "3.5"
+    err = HTTPError(
+        url="http://localhost:11434/v1",
+        code=429,
+        msg="Too Many Requests",
+        hdrs=headers,
+        fp=BytesIO(b"rate limited"),
+    )
+    with patch("helix.providers.openai_compat.urlopen", side_effect=err):
+        try:
+            provider.generate([{"role": "user", "content": "hello"}])
+            assert False, "Expected LLMTransientError"
+        except LLMTransientError as exc:
+            assert exc.status_code == 429
+            assert exc.retry_after == 3.5
+            assert "429" in str(exc)
+    print("  LLMProvider 429 → LLMTransientError with retry_after OK")
+
+
+def test_llm_provider_401_raises_permanent_error():
+    from urllib.error import HTTPError
+    from io import BytesIO
+
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
+    err = HTTPError(
+        url="http://localhost:11434/v1",
+        code=401,
+        msg="Unauthorized",
+        hdrs=None,
+        fp=BytesIO(b"invalid api key"),
+    )
+    with patch("helix.providers.openai_compat.urlopen", side_effect=err):
+        try:
+            provider.generate([{"role": "user", "content": "hello"}])
+            assert False, "Expected LLMPermanentError"
+        except LLMPermanentError as exc:
+            assert exc.status_code == 401
+            assert isinstance(exc, RuntimeError)
+    print("  LLMProvider 401 → LLMPermanentError OK")
 
 
 # =========================================================================== #
@@ -292,11 +341,14 @@ if __name__ == "__main__":
     print("=== Provider Initialization ===")
     test_llm_provider_default_init()
     test_llm_provider_custom_init()
-    test_llm_provider_auto_appends_v1()
-    test_llm_provider_preserves_existing_v1()
-    test_llm_provider_env_vars()
-    test_llm_provider_explicit_overrides_env()
+    test_llm_provider_builds_endpoint()
     test_provider_satisfies_protocol()
+
+    print("\n=== Provider Error Classification ===")
+    test_llm_provider_stream_timeout_raises_transient_error()
+    test_llm_provider_stream_disconnect_raises_transient_error()
+    test_llm_provider_429_raises_transient_with_retry_after()
+    test_llm_provider_401_raises_permanent_error()
 
     print("\n=== Skill Loader ===")
     test_skill_loader()
@@ -305,6 +357,7 @@ if __name__ == "__main__":
 
     print("\n=== Prompt Builder ===")
     test_prompt_builder()
+    test_agent_rebuilds_prompt_from_updated_workspace_skills()
     test_prompt_builder_unknown_role()
     test_prompt_builder_no_prompts()
 

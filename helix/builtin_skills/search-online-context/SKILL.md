@@ -67,7 +67,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/search-online-context/scripts/search_searxng.py",
+  "script_path": "skills/builtin_skills/search-online-context/scripts/search_searxng.py",
   "script_args": [
     "--query", "site:forecast.weather.gov chicago tomorrow weather",
     "--limit", "8",
@@ -83,7 +83,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/search-online-context/scripts/fetch_pages.py",
+  "script_path": "skills/builtin_skills/search-online-context/scripts/fetch_pages.py",
   "script_args": [
     "--url", "https://forecast.weather.gov/MapClick.php?lat=41.88&lon=-87.63",
     "--url", "https://www.weather.gov/lot/",
@@ -98,7 +98,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/all-agents/search-online-context/scripts/search_and_fetch.py",
+  "script_path": "skills/builtin_skills/search-online-context/scripts/search_and_fetch.py",
   "script_args": [
     "--query", "site:forecast.weather.gov chicago tomorrow weather",
     "--limit", "8",

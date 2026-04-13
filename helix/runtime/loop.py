@@ -6,18 +6,24 @@ The entire orchestration reduces to: state → agent → action → environment 
 
 from __future__ import annotations
 
+import random
 import sys
+import time
 from typing import Any, TextIO, Callable
 
 from ..core.action import Action, ActionParseError, ALLOWED_SUB_ACTIONS
 from ..core.agent import Agent
 from ..core.environment import Environment, CompactionError, ExecutionInterrupted
-from ..core.state import Turn
-from .display import iter_exec_payload_items, write_framed_text
+from ..core.state import State, Turn
+from ..providers.openai_compat import LLMTransientError
+from .display import iter_exec_payload_items, write_runtime
 
 
 DEFAULT_MAX_TURNS = 9999999
 DEFAULT_MAX_RETRIES = 10
+DEFAULT_LLM_RETRIES = 30
+_LLM_RETRY_BASE_DELAY = 2.0
+_LLM_RETRY_MAX_DELAY = 60.0
 
 
 def run_loop(
@@ -64,32 +70,34 @@ def run_loop(
                 f"Session paused: context window is full and compaction failed ({exc}). "
                 f"Please start a new session or reduce context."
             )
-            _print(output, f"runtime> {msg}\n", add_separator=True)
+            _print(output, f"runtime> {msg}\n")
             return msg
 
         # 2. Agent decides
         if on_turn_start:
             on_turn_start(agent.role)
         try:
-            action = agent.act(
-                state,
+            action = _act_with_retry(
+                agent, state,
                 chunk_callback=on_token_chunk,
+                on_turn_error=on_turn_error,
+                output=output,
             )
             consecutive_failures = 0
         except ActionParseError as exc:
             if on_turn_error:
                 on_turn_error()
             consecutive_failures += 1
-            env.record(Turn(
-                role="runtime",
-                content=(
-                    f"Output parse error (attempt {consecutive_failures}/{max_retries}): "
-                    f"{exc}. Please respond with valid <output>...</output> JSON."
-                ),
-            ))
+            _print(output, f"runtime> Output parse error (attempt {consecutive_failures}/{max_retries}): {exc}\n")
+            # Record only the first parse error to avoid flooding the observation window.
+            if consecutive_failures == 1:
+                env.record(Turn(
+                    role="runtime",
+                    content=f"Output parse error: {exc}. Please respond with valid <output>...</output> JSON.",
+                ))
             if consecutive_failures >= max_retries:
                 msg = "Loop ended: too many consecutive parse failures."
-                _print(output, f"runtime> {msg}\n", add_separator=True)
+                _print(output, f"runtime> {msg}\n")
                 return msg
             continue
 
@@ -114,25 +122,17 @@ def run_loop(
             pass
 
         elif action.type == "exec":
-            _print(
-                output,
-                f"runtime> Executing: {action.payload.get('job_name', 'unnamed')}...\n",
-                add_separator=True,
-            )
+            _print(output, f"runtime> Executing: {action.payload.get('job_name', 'unnamed')}...\n")
             try:
                 observation = env.execute(action)
             except ExecutionInterrupted as exc:
                 env.record(exc.observation)
-                _print(output, f"runtime> {exc.observation.content}\n", add_separator=True)
+                _print(output, f"runtime> {exc.observation.content}\n")
                 return exc.observation.content
             env.record(observation)
 
         elif action.type == "delegate":
-            _print(
-                output,
-                f"runtime> Delegating to sub-agent: {action.payload.get('role', 'unknown')}...\n",
-                add_separator=True,
-            )
+            _print(output, f"runtime> Delegating to sub-agent: {action.payload.get('role', 'unknown')}...\n")
             result = _delegate(action, env, model)
             env.record(Turn(
                 role="sub_agent",
@@ -141,7 +141,7 @@ def run_loop(
 
     # Turn limit reached
     msg = "Loop ended: maximum turns reached."
-    _print(output, f"runtime> {msg}\n", add_separator=True)
+    _print(output, f"runtime> {msg}\n")
     return msg
 
 
@@ -179,7 +179,7 @@ def _delegate(action: Action, env: Environment, model: Any) -> str:
     seed_content = objective
     if context:
         seed_content += f"\n\nContext:\n{context}"
-    sub_env.record(Turn(role="user", content=seed_content))
+    sub_env.record(Turn(role="core_agent", content=seed_content))
 
     # Build sub-agent (cannot delegate further)
     sub_agent = Agent(
@@ -193,15 +193,42 @@ def _delegate(action: Action, env: Environment, model: Any) -> str:
     return run_loop(sub_agent, sub_env)
 
 
-def _print(output: TextIO, text: str, *, add_separator: bool = False) -> None:
-    """Print to the output stream."""
-    if not text:
-        return
-    if add_separator:
-        write_framed_text(text, output)
-    else:
-        output.write(text)
-        output.flush()
+def _act_with_retry(
+    agent: Agent,
+    state: State,
+    *,
+    chunk_callback: Callable[[str], None] | None,
+    on_turn_error: Callable[[], None] | None,
+    output: TextIO,
+    max_retries: int = DEFAULT_LLM_RETRIES,
+) -> Action:
+    """Call agent.act() with retry on transient LLM errors.
+
+    Retries with exponential backoff + jitter. Does NOT record anything
+    to the environment — the agent never produced output.
+    """
+    last_exc: LLMTransientError | None = None
+    for attempt in range(1, max_retries + 1):
+        try:
+            return agent.act(state, chunk_callback=chunk_callback)
+        except LLMTransientError as exc:
+            last_exc = exc
+            if on_turn_error:
+                on_turn_error()
+            if attempt >= max_retries:
+                raise
+            delay = min(_LLM_RETRY_BASE_DELAY * (2 ** (attempt - 1)), _LLM_RETRY_MAX_DELAY) + random.uniform(0, 1)
+            if exc.retry_after is not None:
+                delay = max(delay, exc.retry_after)
+            _print(output, f"runtime> LLM provider error (attempt {attempt}/{max_retries}, retrying in {delay:.1f}s): {exc}\n")
+            time.sleep(delay)
+    raise last_exc  # all retries exhausted
+
+
+def _print(output: TextIO, text: str) -> None:
+    """Print runtime-styled output."""
+    if text:
+        write_runtime(text, output)
 
 # --------------------------------------------------------------------------- #
 # Agent record formatting

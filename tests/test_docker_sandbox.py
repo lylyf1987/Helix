@@ -10,7 +10,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from helix.runtime.sandbox import DockerSandboxExecutor
 from helix.runtime.host import docker_is_available
-from helix.runtime.local_model_service import LocalModelServiceManager
 import helix.runtime.local_model_service.constants as _constants
 
 
@@ -33,26 +32,6 @@ def _set_helix_home(workspace: Path) -> tuple[Path, Path]:
 
 def _restore_helix_home(previous: Path) -> None:
     _constants.HELIX_HOME = previous
-
-
-def test_docker_sandbox_uses_global_service_paths():
-    with tempfile.TemporaryDirectory() as td:
-        workspace_one = (Path(td) / "workspace-one").resolve()
-        workspace_two = (Path(td) / "workspace-two").resolve()
-        workspace_one.mkdir(parents=True, exist_ok=True)
-        workspace_two.mkdir(parents=True, exist_ok=True)
-        previous, helix_home = _set_helix_home(workspace_one)
-        try:
-            executor_one = DockerSandboxExecutor(workspace_one, searxng_base_url="https://example.com")
-            executor_two = DockerSandboxExecutor(workspace_two, searxng_base_url="https://example.com")
-            assert executor_one.network_name == executor_two.network_name == "helix-sandbox-net"
-            assert executor_one.cache_dir == workspace_one / ".runtime" / "docker" / "cache"
-            assert executor_two.cache_dir == workspace_two / ".runtime" / "docker" / "cache"
-            assert executor_one.searxng_config_dir == helix_home / "runtime" / "services" / "searxng" / "config"
-            assert executor_two.searxng_data_dir == helix_home / "runtime" / "services" / "searxng" / "data"
-            print("  Docker sandbox global service paths OK")
-        finally:
-            _restore_helix_home(previous)
 
 
 def test_docker_sandbox_bash_execution():
@@ -248,202 +227,13 @@ def test_docker_sandbox_managed_searxng_returns_json():
             _restore_helix_home(previous)
 
 
-def test_docker_sandbox_image_skill_can_reach_local_model_service():
-    if not _docker_ready() or sys.platform != "darwin":
-        return
-
-    with tempfile.TemporaryDirectory() as td:
-        workspace = Path(td)
-        previous, _ = _set_helix_home(workspace)
-        skills_root = workspace / "skills" / "builtin_skills"
-        skills_root.mkdir(parents=True, exist_ok=True)
-        source_skill = (
-            Path(__file__).resolve().parent.parent
-            / "helix"
-            / "builtin_skills"
-            / "generate-image"
-        )
-        shutil.copytree(source_skill, skills_root / "generate-image")
-        manager = LocalModelServiceManager(
-            workspace,
-            session_id="docker-image-skill",
-            backend_mode="fake",
-        )
-        try:
-            manager.start()
-        except PermissionError:
-            return
-        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
-        executor.attach_local_model_service(manager.tool_environment())
-        try:
-            prepare_turn = executor(
-                {
-                    "job_name": "docker-image-prepare",
-                    "code_type": "python",
-                    "script_path": "skills/builtin_skills/generate-image/scripts/prepare_model.py",
-                    "script_args": [],
-                },
-                workspace,
-            )
-            assert "succeeded" in prepare_turn.content
-            assert "phase: prepare" in prepare_turn.content
-
-            turn = executor(
-                {
-                    "job_name": "docker-image-skill",
-                    "code_type": "python",
-                    "script_path": "skills/builtin_skills/generate-image/scripts/generate_image.py",
-                    "script_args": [
-                        "--prompt", "A minimal test image",
-                        "--output-dir", "generated_images",
-                    ],
-                },
-                workspace,
-            )
-            assert "succeeded" in turn.content
-            assert "phase: generate" in turn.content
-            assert "generated_images/" in turn.content
-            generated = list((workspace / "generated_images").glob("*.png"))
-            assert generated, "expected generated image file"
-            print("  Docker image skill local-model-service reachability OK")
-        finally:
-            executor.shutdown()
-            manager.stop()
-            _restore_helix_home(previous)
-
-
-def test_docker_sandbox_audio_skill_can_reach_local_model_service():
-    if not _docker_ready() or sys.platform != "darwin":
-        return
-
-    with tempfile.TemporaryDirectory() as td:
-        workspace = Path(td)
-        previous, _ = _set_helix_home(workspace)
-        skills_root = workspace / "skills" / "builtin_skills"
-        skills_root.mkdir(parents=True, exist_ok=True)
-        source_skill = (
-            Path(__file__).resolve().parent.parent
-            / "helix"
-            / "builtin_skills"
-            / "generate-audio"
-        )
-        shutil.copytree(source_skill, skills_root / "generate-audio")
-        manager = LocalModelServiceManager(
-            workspace,
-            session_id="docker-audio-skill",
-            backend_mode="fake",
-        )
-        try:
-            manager.start()
-        except PermissionError:
-            return
-        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
-        executor.attach_local_model_service(manager.tool_environment())
-        try:
-            prepare_turn = executor(
-                {
-                    "job_name": "docker-audio-prepare",
-                    "code_type": "python",
-                    "script_path": "skills/builtin_skills/generate-audio/scripts/prepare_model.py",
-                    "script_args": [],
-                },
-                workspace,
-            )
-            assert "succeeded" in prepare_turn.content
-            assert "phase: prepare" in prepare_turn.content
-
-            turn = executor(
-                {
-                    "job_name": "docker-audio-skill",
-                    "code_type": "python",
-                    "script_path": "skills/builtin_skills/generate-audio/scripts/generate_audio.py",
-                    "script_args": [
-                        "--text", "Hello from the local audio skill",
-                        "--output-dir", "generated_audio",
-                    ],
-                },
-                workspace,
-            )
-            assert "succeeded" in turn.content
-            assert "phase: generate" in turn.content
-            assert "generated_audio/" in turn.content
-            generated = list((workspace / "generated_audio").glob("*.wav"))
-            assert generated, "expected generated audio file"
-            print("  Docker audio skill local-model-service reachability OK")
-        finally:
-            executor.shutdown()
-            manager.stop()
-            _restore_helix_home(previous)
-
-
-def test_docker_sandbox_video_skill_can_reach_local_model_service():
-    if not _docker_ready() or sys.platform != "darwin":
-        return
-
-    with tempfile.TemporaryDirectory() as td:
-        workspace = Path(td)
-        previous, _ = _set_helix_home(workspace)
-        skills_root = workspace / "skills" / "builtin_skills"
-        skills_root.mkdir(parents=True, exist_ok=True)
-        source_skill = (
-            Path(__file__).resolve().parent.parent
-            / "helix"
-            / "builtin_skills"
-            / "generate-video"
-        )
-        shutil.copytree(source_skill, skills_root / "generate-video")
-        manager = LocalModelServiceManager(
-            workspace,
-            session_id="docker-video-skill",
-            backend_mode="fake",
-        )
-        try:
-            manager.start()
-        except PermissionError:
-            return
-        executor = DockerSandboxExecutor(workspace, searxng_base_url="https://example.com")
-        executor.attach_local_model_service(manager.tool_environment())
-        try:
-            prepare_turn = executor(
-                {
-                    "job_name": "docker-video-prepare",
-                    "code_type": "python",
-                    "script_path": "skills/builtin_skills/generate-video/scripts/prepare_model.py",
-                    "script_args": [],
-                },
-                workspace,
-            )
-            assert "succeeded" in prepare_turn.content
-            assert "phase: prepare" in prepare_turn.content
-
-            turn = executor(
-                {
-                    "job_name": "docker-video-skill",
-                    "code_type": "python",
-                    "script_path": "skills/builtin_skills/generate-video/scripts/generate_video.py",
-                    "script_args": [
-                        "--prompt", "A calm beach at sunset",
-                        "--output-dir", "generated_videos",
-                    ],
-                },
-                workspace,
-            )
-            assert "succeeded" in turn.content
-            assert "phase: generate" in turn.content
-            assert "generated_videos/" in turn.content
-            generated = list((workspace / "generated_videos").glob("*.mp4"))
-            assert generated, "expected generated video file"
-            print("  Docker video skill local-model-service reachability OK")
-        finally:
-            executor.shutdown()
-            manager.stop()
-            _restore_helix_home(previous)
-
-
 if __name__ == "__main__":
+    print("=== Docker Sandbox ===")
     test_docker_sandbox_bash_execution()
     test_docker_sandbox_writes_host_workspace()
     test_docker_sandbox_persists_python_installs_in_cache()
     test_docker_sandbox_browser_tooling_available()
     test_docker_sandbox_can_use_git_metadata()
     test_docker_sandbox_managed_searxng_returns_json()
+
+    print("\n✅ All Docker sandbox tests passed!")

@@ -20,7 +20,6 @@ from helix.core.state import Turn
 from helix.runtime.host import docker_is_available
 from helpers import sandbox_executor
 from helix.runtime.approval import ApprovalPolicy
-from helix.runtime.display import TURN_SEPARATOR
 
 
 def _docker_ready() -> bool:
@@ -95,8 +94,9 @@ class SharedModel:
     def generate(self, messages, *, chunk_callback=None):
         full_text = " ".join(m.get("content", "") for m in messages)
         self.calls.append(full_text[:100])  # track calls
+        system_msg = messages[0].get("content", "") if messages else ""
 
-        if "sub-agent" in full_text.lower():
+        if "You are a Sub-Agent" in system_msg:
             # Sub-agent call
             return (
                 '<output>'
@@ -218,8 +218,7 @@ def test_full_delegation_loop():
         # Should get the final answer
         assert "Guido" in result
         assert len(model.calls) >= 3  # core(delegate) + sub(chat) + core(chat)
-        assert f"{TURN_SEPARATOR}\nruntime> Delegating to sub-agent" in output.getvalue()
-        assert TURN_SEPARATOR in output.getvalue()
+        assert "Delegating to sub-agent" in output.getvalue()
         assert "sub-agent>" not in output.getvalue()
 
         # Verify sub_agent turn appears in history
