@@ -115,10 +115,11 @@ class DockerSandboxExecutor:
         return env
 
     def prepare_runtime(self) -> None:
-        """Build sandbox image and prepare cache."""
+        """Build sandbox image, create the shared network, and prepare cache."""
         if self._runtime_prepared:
             return
         self._ensure_image()
+        self._ensure_network()
         self._ensure_cache_dir()
         self._runtime_prepared = True
 
@@ -182,6 +183,12 @@ class DockerSandboxExecutor:
             ["build", "-t", self.image_tag, "-f", str(_SANDBOX_DOCKERFILE), str(_DOCKER_BUILD_ROOT)],
             timeout=_DOCKER_BUILD_TIMEOUT,
         )
+
+    def _ensure_network(self) -> None:
+        inspect = _run_docker(["network", "inspect", self.network_name], check=False)
+        if inspect.returncode == 0:
+            return
+        _run_docker(["network", "create", self.network_name], timeout=30)
 
     def _ensure_cache_dir(self) -> None:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
