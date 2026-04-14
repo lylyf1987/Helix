@@ -124,7 +124,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Prepare the built-in local PyTorch LTX-Video model.")
+    parser = argparse.ArgumentParser(description="Prepare the built-in LTX-2.3 MLX q4 model.")
     parser.add_argument("--timeout", type=int, default=1200)
     return parser.parse_args()
 

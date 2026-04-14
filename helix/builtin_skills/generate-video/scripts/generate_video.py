@@ -196,22 +196,17 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     task_type = _TASK_TEXT_IMAGE_TO_VIDEO if image_path else _TASK_TEXT_TO_VIDEO
     payload_inputs: dict[str, Any] = {
         "prompt": prompt,
-        "size": str(args.size or "704x512"),
+        "size": str(args.size or "832x480"),
         "output_path": output_path,
-        "fps": int(args.fps),
         "num_frames": int(args.num_frames),
         "num_inference_steps": int(args.num_inference_steps),
         "guidance_scale": float(args.guidance_scale),
-        "guidance_rescale": float(args.guidance_rescale),
-        "decode_timestep": float(args.decode_timestep),
-        "decode_noise_scale": float(args.decode_noise_scale),
-        "max_sequence_length": int(args.max_sequence_length),
         "seed": int(args.seed),
     }
-    if str(args.negative_prompt or "").strip():
-        payload_inputs["negative_prompt"] = str(args.negative_prompt).strip()
     if image_path:
         payload_inputs["image_path"] = image_path
+        payload_inputs["image_strength"] = float(args.image_strength)
+        payload_inputs["image_frame_idx"] = int(args.image_frame_idx)
 
     timeout = max(5, int(args.timeout))
     payload = {
@@ -246,7 +241,7 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     if not isinstance(outputs, dict):
         outputs = {}
     resolved_output_path = str(outputs.get("output_path", output_path)).strip()
-    fps = int(outputs.get("fps") or args.fps or 0)
+    fps = int(outputs.get("fps") or 0)
     num_frames = int(outputs.get("num_frames") or args.num_frames or 0)
     if status_code != 200 or parsed.get("status") != "ok":
         return _err(
@@ -272,23 +267,19 @@ def run(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Generate a video with the built-in local PyTorch LTX-Video backend.")
+    parser = argparse.ArgumentParser(description="Generate a video with the built-in LTX-2.3 MLX backend.")
     parser.add_argument("--prompt", default="")
     parser.add_argument("--image-path", default="")
-    parser.add_argument("--size", default="704x512")
-    parser.add_argument("--negative-prompt", default="")
-    parser.add_argument("--num-frames", type=int, default=161)
-    parser.add_argument("--fps", type=int, default=25)
-    parser.add_argument("--num-inference-steps", type=int, default=50)
+    parser.add_argument("--image-strength", type=float, default=1.0)
+    parser.add_argument("--image-frame-idx", type=int, default=0)
+    parser.add_argument("--size", default="832x480")
+    parser.add_argument("--num-frames", type=int, default=65)
+    parser.add_argument("--num-inference-steps", type=int, default=30)
     parser.add_argument("--guidance-scale", type=float, default=3.0)
-    parser.add_argument("--guidance-rescale", type=float, default=0.0)
-    parser.add_argument("--decode-timestep", type=float, default=0.03)
-    parser.add_argument("--decode-noise-scale", type=float, default=0.025)
-    parser.add_argument("--max-sequence-length", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--output-path", default="")
     parser.add_argument("--output-dir", default="generated_videos")
-    parser.add_argument("--timeout", type=int, default=1200)
+    parser.add_argument("--timeout", type=int, default=1800)
     return parser.parse_args()
 
 

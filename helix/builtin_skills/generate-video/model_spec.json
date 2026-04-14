@@ -1,15 +1,29 @@
 {
-  "backend": "pytorch",
+  "backend": "mlx",
   "source": {
-    "repo_id": "Wan-AI/Wan2.2-TI2V-5B-Diffusers"
+    "repo_id": "notapalindrome/ltx23-mlx-av-q4"
   },
   "download_manifest": {
-    "include": [],
+    "include": [
+      "*.safetensors",
+      "*.json"
+    ],
     "exclude": [],
     "required": [
-      "model_index.json",
-      "vae/config.json",
-      "vae/*.safetensors"
+      "config.json",
+      "split_model.json",
+      "embedded_config.json",
+      "quantize_config.json",
+      "transformer.safetensors",
+      "connector.safetensors",
+      "upsampler.safetensors",
+      "vae_decoder.safetensors",
+      "vae_encoder.safetensors",
+      "audio_vae.safetensors",
+      "vocoder.safetensors",
+      "spatial_upscaler_x1_5_v1_0.safetensors",
+      "spatial_upscaler_x2_v1_1.safetensors",
+      "temporal_upscaler_x2_v1_0.safetensors"
     ]
   }
 }
