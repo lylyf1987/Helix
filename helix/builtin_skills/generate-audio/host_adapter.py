@@ -23,6 +23,7 @@ _PYTORCH_TEXT_TO_AUDIO_DEPENDENCIES = (
     "qwen-tts",
     "soundfile",
     "torch",
+    "torchvision",
     "transformers",
 )
 
