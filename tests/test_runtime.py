@@ -38,9 +38,9 @@ def test_sandbox_bash_execution():
         }
         turn = sandbox_executor(payload, workspace)
         assert turn.role == "runtime"
-        assert "Job 'test_bash' succeeded." in turn.content
-        assert "hello from bash" in turn.content
-        assert "Exit code: 0" in turn.content
+        assert "Job 'test_bash' succeeded." in turn.content, f"turn.content was: {turn.content!r}"
+        assert "hello from bash" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "Exit code: 0" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Sandbox bash execution OK")
 
 
@@ -55,9 +55,9 @@ def test_sandbox_python_execution():
             "job_name": "test_python"
         }
         turn = sandbox_executor(payload, workspace)
-        assert "Job 'test_python' succeeded." in turn.content
-        assert "hello from python" in turn.content
-        assert "Exit code: 0" in turn.content
+        assert "Job 'test_python' succeeded." in turn.content, f"turn.content was: {turn.content!r}"
+        assert "hello from python" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "Exit code: 0" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Sandbox python execution OK")
 
 
@@ -71,9 +71,9 @@ def test_sandbox_failure_exit_code():
             "script": "exit 42",
         }
         turn = sandbox_executor(payload, workspace)
-        assert "Job 'unnamed_job' failed." in turn.content
-        assert "failed" in turn.content
-        assert "Exit code: 42" in turn.content
+        assert "Job 'unnamed_job' failed." in turn.content, f"turn.content was: {turn.content!r}"
+        assert "failed" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "Exit code: 42" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Sandbox failure exit code OK")
 
 
@@ -87,7 +87,7 @@ def test_sandbox_invalid_input():
             # Missing both script and script_path
         }
         turn = sandbox_executor(payload, workspace)
-        assert "Job 'unnamed_job' failed to start" in turn.content
+        assert "Job 'unnamed_job' failed to start" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Sandbox invalid input OK")
 
 
@@ -109,13 +109,13 @@ def test_sandbox_formats_json_stdout_readably():
             ),
         }
         turn = sandbox_executor(payload, workspace)
-        assert "Job 'json-output' succeeded." in turn.content
-        assert "<stdout>" in turn.content
-        assert "status: ok" in turn.content
-        assert "details: |" in turn.content
-        assert "line1" in turn.content
-        assert "line2" in turn.content
-        assert '"details"' not in turn.content
+        assert "Job 'json-output' succeeded." in turn.content, f"turn.content was: {turn.content!r}"
+        assert "<stdout>" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "status: ok" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "details: |" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "line1" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "line2" in turn.content, f"turn.content was: {turn.content!r}"
+        assert '"details"' not in turn.content, f"turn.content was: {turn.content!r}"
         print("  Sandbox JSON stdout formatting OK")
 
 
@@ -130,9 +130,9 @@ def test_sandbox_wraps_stderr_readably():
             "script": "echo 'problem line' 1>&2; exit 7",
         }
         turn = sandbox_executor(payload, workspace)
-        assert "Job 'stderr-output' failed." in turn.content
-        assert "<stderr>" in turn.content
-        assert "problem line" in turn.content
+        assert "Job 'stderr-output' failed." in turn.content, f"turn.content was: {turn.content!r}"
+        assert "<stderr>" in turn.content, f"turn.content was: {turn.content!r}"
+        assert "problem line" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Sandbox stderr formatting OK")
 
 
@@ -405,8 +405,8 @@ def test_environment_integration():
         })
 
         turn = env.execute(action)
-        assert "Job 'unnamed_job' succeeded." in turn.content
-        assert "integrated bash" in turn.content
+        assert "Job 'unnamed_job' succeeded." in turn.content, f"turn.content was: {turn.content!r}"
+        assert "integrated bash" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Environment integration OK")
 
 
