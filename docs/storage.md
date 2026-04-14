@@ -57,9 +57,9 @@ Neither location holds any secrets. Everything is plain files you can read, edit
 
     local-model-service/                    Local ML model service
       state.json                            Service state (PID, port, auth token)
-      models/                               Downloaded model weights (one dir per repo_id)
-        uqer1244--MLX-z-image/
-        notapalindrome--ltx23-mlx-av-q4/
+      models/                               Downloaded model weights from HuggingFace Hub.
+        uqer1244--MLX-z-image/              One directory per HF repo_id; slashes
+        notapalindrome--ltx23-mlx-av-q4/    become `--` in the directory name.
         ...
       venvs/                                Per-backend Python environments
         mlx/                                Shared by mlx-backed skills
@@ -70,9 +70,10 @@ Neither location holds any secrets. Everything is plain files you can read, edit
 **Rules of thumb:**
 
 - **Shared across every workspace on the machine** — model weights, venvs, running services. Start OpenHelix from two different workspaces and both see the same downloaded models.
-- **Safe to delete** — any directory under `~/.helix/services/local-model-service/models/` if you no longer need that model. Next `helix model download --skill X` will re-fetch it.
+- **All model weights come from [HuggingFace Hub](https://huggingface.co)** — this is currently the only download source. If a model is gated or private, set `HF_TOKEN` in your shell before running `helix model download`.
+- **Safe to delete** — any directory under `~/.helix/services/local-model-service/models/` if you no longer need that model. Next `helix model download --skill X` will re-fetch it from HuggingFace.
 - **Do not hand-edit** — `state.json` files describe live services; touch them while a service is running and things break. Use `helix stop SERVICE` first.
-- **Each model directory's layout comes from the upstream** — OpenHelix doesn't rearrange what `huggingface-cli download` produces. An adapter may add a co-located `_runner/` subdirectory with fetched upstream Python files; that's normal.
+- **Each model directory's layout comes from the upstream** — OpenHelix doesn't rearrange what the HuggingFace CLI produces. An adapter may add a co-located `_runner/` subdirectory with fetched upstream Python files; that's normal.
 
 ## Key Files Reference
 

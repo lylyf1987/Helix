@@ -83,12 +83,14 @@ Now the agent can use the `search-online-context` skill to search the web.
 ### Local Model Service (for image/audio/video generation)
 
 ```bash
-# Download a model first
+# Download model weights from HuggingFace Hub
 helix model download --skill generate-image
 
 # Start the service
 helix start local-model-service --workspace ~/my-agent
 ```
+
+All generative-skill model weights are fetched from **[HuggingFace Hub](https://huggingface.co)** — this is currently the only supported source. If a model is gated or private, set `HF_TOKEN=hf_xxx...` in your shell before running `helix model download`.
 
 Now the agent can use generative skills like `generate-image`.
 

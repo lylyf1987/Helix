@@ -64,7 +64,7 @@ helix model download --skill generate-audio
 helix model download --skill generate-video
 ```
 
-`helix model download` downloads only the model weights — each skill's runtime code comes along with the package. Set `HF_TOKEN` in your environment first if a model requires HuggingFace authentication.
+`helix model download` fetches model weights from **[HuggingFace Hub](https://huggingface.co)** — this is currently the only supported source. Each generative skill's `model_spec.json` points at a HuggingFace repo slug like `author/model-name`. Set `HF_TOKEN` in your environment first if a model is gated or private.
 
 ### 4. Alternative: Use a Hosted LLM
 

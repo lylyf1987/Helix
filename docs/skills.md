@@ -129,12 +129,12 @@ Three moving parts: the skill procedure (`SKILL.md`), the model spec (`model_spe
 
 ### model_spec.json
 
-Describes what `helix model download` should fetch from HuggingFace. This is *only* for model weights — runtime Python code should come with the package or be fetched by the adapter itself (see below).
+Describes what `helix model download` should fetch. This file is *only* about model weights — runtime Python code should come with a pip package or be fetched by the adapter itself (see below).
 
 ```json
 {
   "backend": "mlx",
-  "source": {"repo_id": "org/model-name"},
+  "source": {"repo_id": "author/model-name"},
   "download_manifest": {
     "include": ["*.safetensors", "*.json"],
     "exclude": [],
@@ -145,6 +145,18 @@ Describes what `helix model download` should fetch from HuggingFace. This is *on
   }
 }
 ```
+
+**Important for new users — where the weights come from:**
+
+OpenHelix always downloads model weights from **[HuggingFace Hub](https://huggingface.co)**. There is currently no other supported source: you cannot point `repo_id` at a direct URL, an S3 bucket, a local directory, or a different model hub like ModelScope. Under the hood, the runtime shells out to the `huggingface_hub` CLI (`hf download <repo_id> --local-dir ...`), which is what understands how to resolve the slug, fetch files, and cache them.
+
+The `repo_id` field is therefore a **HuggingFace Hub repo slug** — the same `author/model-name` string you'd see in the URL bar at huggingface.co. For example, `notapalindrome/ltx23-mlx-av-q4` corresponds to `https://huggingface.co/notapalindrome/ltx23-mlx-av-q4`. If the model is gated or private, set `HF_TOKEN=hf_xxx...` in your shell before running `helix model download --skill my-gen-skill`.
+
+The `download_manifest` gives you fine-grained control over what gets fetched:
+
+- `include` — glob patterns of files to fetch (e.g. `*.safetensors`, `*.json`). If non-empty and `exclude` is empty, only these patterns are downloaded.
+- `exclude` — glob patterns of files to skip (e.g. `transformer-dev.safetensors` if you only want the distilled variant).
+- `required` — glob patterns that must resolve to at least one file after the download completes, otherwise the prepare phase fails with "prepared files are incomplete". This is your safety net against partial downloads.
 
 **Choosing a backend name** decides which Python venv your skill uses:
 
