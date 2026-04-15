@@ -373,19 +373,29 @@ def test_run_loop_parse_retry():
 
 
 def test_run_loop_max_retries():
-    """Test that run_loop stops after max parse failures."""
+    """Test that run_loop stops after DEFAULT_PARSE_RETRIES consecutive failures.
+
+    The retry cap is a module-level constant rather than a parameter, so we
+    patch it to a small value for the duration of the test.
+    """
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None):
             return "always bad"
 
-    with tempfile.TemporaryDirectory() as td:
-        env = Environment(workspace=Path(td))
-        env.record(Turn(role="user", content="test"))
-        agent = Agent(MockModel(), workspace=Path(td))
-        result = run_loop(agent, env, max_retries=2, output=sys.stderr)
-        assert "parse failures" in result.lower()
-        print("  run_loop (max retries) OK")
+    from helix.runtime import loop as loop_module
+    original_retries = loop_module.DEFAULT_PARSE_RETRIES
+    loop_module.DEFAULT_PARSE_RETRIES = 2
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            env = Environment(workspace=Path(td))
+            env.record(Turn(role="user", content="test"))
+            agent = Agent(MockModel(), workspace=Path(td))
+            result = run_loop(agent, env, output=sys.stderr)
+            assert "parse failures" in result.lower()
+            print("  run_loop (max retries) OK")
+    finally:
+        loop_module.DEFAULT_PARSE_RETRIES = original_retries
 
 
 def test_run_loop_exec_denied_returns_control():

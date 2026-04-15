@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from helix.core.action import Action, ALLOWED_CORE_ACTIONS, ALLOWED_SUB_ACTIONS
 from helix.core.agent import Agent
 from helix.core.environment import Environment
-from helix.runtime.loop import run_loop, _delegate, _load_sub_agents_meta
+from helix.runtime.loop import run_loop, _delegate
+from helix.runtime.sub_agent_meta import load as _load_sub_agents_meta
 from helix.core.state import Turn
 from helix.runtime.host import docker_is_available
 from helpers import sandbox_executor
