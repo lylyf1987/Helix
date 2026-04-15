@@ -275,8 +275,15 @@ def test_environment_persistence():
         print("  Persistence OK")
 
 
-def test_run_loop_compaction_failure_is_ui_only():
-    """Compaction failures should pause the session without recording a runtime turn."""
+def test_run_loop_compaction_failure_records_runtime_turn():
+    """Compaction failures are runtime-handled: retry, then record and return.
+
+    The unified error handling contract treats ``CompactionError`` like
+    ``LLMTransientError`` — runtime retries with backoff, then on exhaustion
+    records a runtime Turn and returns to the requester (user or parent
+    core-agent). The agent cannot influence infrastructure issues so there
+    is no point feeding the error back into the agent's prompt.
+    """
 
     class FailingCompactionModel:
         def __init__(self) -> None:
@@ -290,24 +297,34 @@ def test_run_loop_compaction_failure_is_ui_only():
         def generate(self, messages, *, chunk_callback=None):
             assert False, "Agent model should not be called when compaction fails"
 
-    with tempfile.TemporaryDirectory() as td:
-        compactor_model = FailingCompactionModel()
-        env = Environment(workspace=Path(td), token_limit=10, keep_last_k=1,
-                          compactor=Compactor(compactor_model))
-        env.record(Turn(role="user", content="x" * 120))
-        env.record(Turn(role="runtime", content="y" * 120))
+    # Collapse the outer compaction retry to a single attempt so the test
+    # runs fast; the Compactor class still performs its own 3-attempt inner
+    # retry (see helix/core/compactor.py), so the model is called 3 times.
+    from helix.runtime import loop as loop_module
+    original_retries = loop_module.DEFAULT_COMPACTION_RETRIES
+    loop_module.DEFAULT_COMPACTION_RETRIES = 1
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            compactor_model = FailingCompactionModel()
+            env = Environment(workspace=Path(td), token_limit=10, keep_last_k=1,
+                              compactor=Compactor(compactor_model))
+            env.record(Turn(role="user", content="x" * 120))
+            env.record(Turn(role="runtime", content="y" * 120))
 
-        agent = Agent(UnusedAgentModel(), workspace=Path(td))
-        captured = StringIO()
-        result = run_loop(agent, env, output=captured)
+            agent = Agent(UnusedAgentModel(), workspace=Path(td))
+            captured = StringIO()
+            result = run_loop(agent, env, output=captured)
 
-        assert "compaction failed" in result.lower()
-        assert compactor_model.calls == 3
-        assert "Session paused:" in captured.getvalue()
-        assert len(env.full_history) == 2
-        assert len(env.observation) == 2
-        assert all("compaction failed" not in t.content.lower() for t in env.full_history)
-        print("  run_loop (compaction failure UI-only) OK")
+            assert "compaction failed" in result.lower()
+            assert compactor_model.calls == 3
+            assert "compaction failed" in captured.getvalue().lower()
+            # Runtime Turn is appended so the requester sees what happened.
+            assert len(env.full_history) == 3
+            assert env.full_history[-1].role == "runtime"
+            assert "compaction failed" in env.full_history[-1].content.lower()
+            print("  run_loop (compaction failure recorded) OK")
+    finally:
+        loop_module.DEFAULT_COMPACTION_RETRIES = original_retries
 
 
 
@@ -505,7 +522,14 @@ def test_run_loop_transient_error_retries_then_succeeds():
 
 
 def test_run_loop_transient_error_exhausts_retries():
-    """After max retries, transient error should propagate."""
+    """After DEFAULT_LLM_RETRIES attempts, transient error is recorded and returned.
+
+    Under the unified error handling contract, ``LLMTransientError`` is
+    runtime-handled: ``_act_with_retry`` retries up to ``DEFAULT_LLM_RETRIES``
+    times, then on exhaustion ``run_loop`` catches the exception, records a
+    runtime Turn, and returns a summary string to the requester. The error
+    must NOT propagate out of ``run_loop``.
+    """
     from helix.providers.openai_compat import LLMTransientError
     from helix.runtime.loop import DEFAULT_LLM_RETRIES
     from unittest.mock import patch
@@ -522,15 +546,14 @@ def test_run_loop_transient_error_exhausts_retries():
         env.record(Turn(role="user", content="test"))
         agent = Agent(MockModel(), workspace=Path(td))
         with patch("helix.runtime.loop.time.sleep"):
-            try:
-                run_loop(agent, env, output=StringIO())
-                assert False, "Expected LLMTransientError to propagate"
-            except LLMTransientError:
-                pass
+            result = run_loop(agent, env, output=StringIO())
 
+        assert "llm provider error" in result.lower()
         assert call_count[0] == DEFAULT_LLM_RETRIES
-        # No error Turns recorded
-        assert len(env.full_history) == 1  # only user turn
+        # Runtime Turn is appended so the requester sees what happened.
+        assert len(env.full_history) == 2  # user + runtime
+        assert env.full_history[-1].role == "runtime"
+        assert "llm provider error" in env.full_history[-1].content.lower()
         print("  run_loop (transient retry exhausted) OK")
 
 
@@ -598,7 +621,7 @@ if __name__ == "__main__":
     test_run_loop_max_retries()
     test_run_loop_exec_denied_returns_control()
     test_run_loop_exec_cancelled_returns_control()
-    test_run_loop_compaction_failure_is_ui_only()
+    test_run_loop_compaction_failure_records_runtime_turn()
 
     print("\n=== LLM Provider Retry ===")
     test_run_loop_transient_error_retries_then_succeeds()
