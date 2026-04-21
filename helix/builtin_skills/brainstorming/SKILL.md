@@ -68,7 +68,7 @@ Typical action patterns:
 1. Ask a focused clarifying question:
 ```json
 {
-  "action": "chat",
+  "next_action": "chat",
   "action_input": {}
 }
 ```
@@ -76,7 +76,7 @@ Typical action patterns:
 2. Synthesize constraints/options internally:
 ```json
 {
-  "action": "think",
+  "next_action": "think",
   "action_input": {}
 }
 ```
@@ -84,7 +84,7 @@ Typical action patterns:
 3. Optional: persist approved design to workspace:
 ```json
 {
-  "action": "exec",
+  "next_action": "exec",
   "action_input": {
     "job_name": "save-design-doc",
     "code_type": "bash",

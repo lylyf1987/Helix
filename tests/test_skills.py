@@ -234,7 +234,7 @@ def test_full_pipeline_with_skill_exec():
                     return (
                         '<output>'
                         '{"response": "Let me check something.", '
-                        '"action": "exec", '
+                        '"next_action": "exec", '
                         '"action_input": {"job_name": "test-skill-pipeline", '
                         '"code_type": "bash", '
                         '"script": "echo Skills loaded successfully"}}'
@@ -243,7 +243,7 @@ def test_full_pipeline_with_skill_exec():
                 return (
                     '<output>'
                     '{"response": "Skills and knowledge are properly loaded!", '
-                    '"action": "chat", "action_input": {}}'
+                    '"next_action": "chat", "action_input": {}}'
                     '</output>'
                 )
 

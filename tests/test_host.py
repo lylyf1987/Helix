@@ -437,7 +437,7 @@ def test_host_process_message():
             return (
                 '<output>'
                 '{"response": "Hello from the agent!", '
-                '"action": "chat", "action_input": {}}'
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -483,7 +483,7 @@ def test_host_process_message_saves_named_session():
         mock_generate = MagicMock(return_value=(
             '<output>'
             '{"response": "Saved response", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         ))
         host._model.generate = mock_generate
@@ -525,7 +525,7 @@ def test_host_process_exec():
                 return (
                     '<output>'
                     '{"response": "Let me check.", '
-                    '"action": "exec", "action_input": {'
+                    '"next_action": "exec", "action_input": {'
                     '"job_name": "test-exec", "code_type": "bash", '
                     '"script": "echo test-output"}}'
                     '</output>'
@@ -535,7 +535,7 @@ def test_host_process_exec():
                     chunk_callback(piece)
             return (
                 '<output>'
-                '{"response": "Done!", "action": "chat", "action_input": {}}'
+                '{"response": "Done!", "next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -593,7 +593,7 @@ def test_host_process_message_discards_parse_failed_preview():
                 bad = (
                     '<output>'
                     '{"response": "Discard this preview", '
-                    '"action": "chat", "action_input": {"bad": "\n"}}'
+                    '"next_action": "chat", "action_input": {"bad": "\n"}}'
                     '</output>'
                 )
                 if chunk_callback is not None:
@@ -604,7 +604,7 @@ def test_host_process_message_discards_parse_failed_preview():
             good = (
                 '<output>'
                 '{"response": "Keep this final answer", '
-                '"action": "chat", "action_input": {}}'
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
             if chunk_callback is not None:
@@ -704,7 +704,7 @@ def test_streaming_extractor_handles_partial_escape():
 
 
 def test_streaming_extractor_not_yet():
-    result = extract_streaming_response('{"action": ')
+    result = extract_streaming_response('{"next_action": ')
     assert result is None
     print("  Streaming extractor (not yet) OK")
 

@@ -54,7 +54,7 @@ class InstrumentedCoreModel:
                 '<output>'
                 '{"response": "The user wants to know the Python version. '
                 'I should delegate this to a sub-agent who can run a command.", '
-                '"action": "think", "action_input": {}}'
+                '"next_action": "think", "action_input": {}}'
                 '</output>'
             )
 
@@ -63,7 +63,7 @@ class InstrumentedCoreModel:
             return (
                 '<output>'
                 '{"response": "I will delegate the version check to a sub-agent.", '
-                '"action": "delegate", '
+                '"next_action": "delegate", '
                 '"action_input": {'
                 '"role": "system-inspector", '
                 '"objective": "Run `python3 --version` and report the Python version number.", '
@@ -79,7 +79,7 @@ class InstrumentedCoreModel:
             '{"response": "Based on the sub-agent report, the installed Python '
             'version is the one reported in the execution output. '
             'The sub-agent successfully ran the version check command.", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         )
 
@@ -104,7 +104,7 @@ class InstrumentedSubModel:
             return (
                 '<output>'
                 '{"response": "I will run the python version command to check.", '
-                '"action": "exec", '
+                '"next_action": "exec", '
                 '"action_input": {'
                 '"job_name": "check-python-version", '
                 '"code_type": "bash", '
@@ -118,7 +118,7 @@ class InstrumentedSubModel:
             '<output>'
             '{"response": "The Python version check is complete. '
             'I have identified the installed Python version from the command output.", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         )
 
@@ -153,7 +153,7 @@ class SharedInstrumentedModel:
                 return (
                     '<output>'
                     '{"response": "Running the requested command.", '
-                    '"action": "exec", '
+                    '"next_action": "exec", '
                     '"action_input": {"job_name": "gather-info", '
                     '"code_type": "bash", "script": "echo Hello from sub-agent && date"}}'
                     '</output>'
@@ -162,7 +162,7 @@ class SharedInstrumentedModel:
                 '<output>'
                 '{"response": "Task complete. The command executed successfully '
                 'and returned: Hello from sub-agent with timestamp.", '
-                '"action": "chat", "action_input": {}}'
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -172,7 +172,7 @@ class SharedInstrumentedModel:
             return (
                 '<output>'
                 '{"response": "I need to gather system info. Let me delegate.", '
-                '"action": "delegate", '
+                '"next_action": "delegate", '
                 '"action_input": {"role": "info-gatherer", '
                 '"objective": "Run echo and date commands, report output."}}'
                 '</output>'
@@ -181,7 +181,7 @@ class SharedInstrumentedModel:
             '<output>'
             '{"response": "The sub-agent gathered the system info successfully. '
             'The output confirmed the commands ran correctly.", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         )
 
@@ -404,7 +404,7 @@ def run_simulation_scenario_3():
     from helix.core.action import parse_action, ActionParseError
     raw = (
         '<output>'
-        '{"response": "test", "action": "delegate", '
+        '{"response": "test", "next_action": "delegate", '
         '"action_input": {"role": "x", "objective": "y"}}'
         '</output>'
     )

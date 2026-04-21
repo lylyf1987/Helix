@@ -50,7 +50,7 @@ class CoreAgentModel:
             return (
                 '<output>'
                 '{"response": "I will delegate research to a sub-agent.", '
-                '"action": "delegate", '
+                '"next_action": "delegate", '
                 '"action_input": {'
                 '"role": "researcher", '
                 '"objective": "Find the capital of France.", '
@@ -62,7 +62,7 @@ class CoreAgentModel:
         return (
             '<output>'
             '{"response": "The sub-agent reported the capital of France is Paris.", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         )
 
@@ -78,7 +78,7 @@ class SubAgentModel:
         return (
             '<output>'
             '{"response": "The capital of France is Paris.", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         )
 
@@ -103,7 +103,7 @@ class SharedModel:
             return (
                 '<output>'
                 '{"response": "Research complete: Python was created by Guido van Rossum.", '
-                '"action": "chat", "action_input": {}}'
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -112,7 +112,7 @@ class SharedModel:
             return (
                 '<output>'
                 '{"response": "Let me delegate this research.", '
-                '"action": "delegate", '
+                '"next_action": "delegate", '
                 '"action_input": {'
                 '"role": "researcher", '
                 '"objective": "Who created Python?"'
@@ -122,7 +122,7 @@ class SharedModel:
         return (
             '<output>'
             '{"response": "According to my research sub-agent, Python was created by Guido van Rossum.", '
-            '"action": "chat", "action_input": {}}'
+            '"next_action": "chat", "action_input": {}}'
             '</output>'
         )
 
@@ -246,7 +246,7 @@ def test_delegate_with_exec_in_sub_agent():
                 return (
                     '<output>'
                     '{"response": "Let me run a script.", '
-                    '"action": "exec", '
+                    '"next_action": "exec", '
                     '"action_input": {"job_name": "sub-task", '
                     '"code_type": "bash", "script": "echo sub-agent-output"}}'
                     '</output>'
@@ -254,7 +254,7 @@ def test_delegate_with_exec_in_sub_agent():
             return (
                 '<output>'
                 '{"response": "Script ran successfully: sub-agent-output", '
-                '"action": "chat", "action_input": {}}'
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -297,7 +297,7 @@ def test_delegate_persists_and_restores_state():
             return (
                 '<output>'
                 '{"response": "Result from call ' + str(call_count[0]) + '.", '
-                '"action": "chat", "action_input": {}}'
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -338,7 +338,7 @@ def test_delegate_new_role_starts_fresh():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None):
-            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -363,7 +363,7 @@ def test_delegate_meta_registry_updated():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None):
-            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -393,7 +393,7 @@ def test_delegate_role_description_updates_meta():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None):
-            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -422,7 +422,7 @@ def test_delegate_without_state_root_still_works():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None):
-            return '<output>{"response": "Done.", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), mode="auto")

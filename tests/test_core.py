@@ -41,7 +41,7 @@ def test_state_creation():
 
 
 def test_parse_chat():
-    raw = '<output>{"response": "Hi!", "action": "chat", "action_input": {}}</output>'
+    raw = '<output>{"response": "Hi!", "next_action": "chat", "action_input": {}}</output>'
     a = parse_action(raw)
     assert a.type == "chat"
     assert a.response == "Hi!"
@@ -50,14 +50,14 @@ def test_parse_chat():
 
 
 def test_parse_think():
-    raw = '<output>{"response": "Thinking...", "action": "think", "action_input": {}}</output>'
+    raw = '<output>{"response": "Thinking...", "next_action": "think", "action_input": {}}</output>'
     a = parse_action(raw)
     assert a.type == "think"
     print("  Parse think OK")
 
 
 def test_parse_exec():
-    raw = '<output>{"response": "Running", "action": "exec", "action_input": {"job_name": "test", "code_type": "bash", "script": "echo hello"}}</output>'
+    raw = '<output>{"response": "Running", "next_action": "exec", "action_input": {"job_name": "test", "code_type": "bash", "script": "echo hello"}}</output>'
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["code_type"] == "bash"
@@ -66,7 +66,7 @@ def test_parse_exec():
 
 
 def test_parse_exec_script_args_array():
-    raw = '<output>{"response": "Running", "action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": ["--query", "hello", "--limit", "5"]}}</output>'
+    raw = '<output>{"response": "Running", "next_action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": ["--query", "hello", "--limit", "5"]}}</output>'
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["script_args"] == ["--query", "hello", "--limit", "5"]
@@ -74,7 +74,7 @@ def test_parse_exec_script_args_array():
 
 
 def test_parse_exec_script_args_string():
-    raw = '<output>{"response": "Running", "action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": "--query \\"hello\\" --limit 5"}}</output>'
+    raw = '<output>{"response": "Running", "next_action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": "--query \\"hello\\" --limit 5"}}</output>'
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["script_args"] == '--query "hello" --limit 5'
@@ -82,7 +82,7 @@ def test_parse_exec_script_args_string():
 
 
 def test_parse_delegate():
-    raw = '<output>{"response": "Delegating", "action": "delegate", "action_input": {"role": "researcher", "objective": "Find info"}}</output>'
+    raw = '<output>{"response": "Delegating", "next_action": "delegate", "action_input": {"role": "researcher", "objective": "Find info"}}</output>'
     a = parse_action(raw)
     assert a.type == "delegate"
     assert a.payload["role"] == "researcher"
@@ -107,7 +107,7 @@ def test_parse_error_invalid_json():
 
 
 def test_parse_error_invalid_action():
-    raw = '<output>{"response": "Hi!", "action": "fly", "action_input": {}}</output>'
+    raw = '<output>{"response": "Hi!", "next_action": "fly", "action_input": {}}</output>'
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -116,7 +116,7 @@ def test_parse_error_invalid_action():
 
 
 def test_parse_error_exec_missing_script():
-    raw = '<output>{"response": "R", "action": "exec", "action_input": {"code_type": "bash"}}</output>'
+    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "bash"}}</output>'
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -125,7 +125,7 @@ def test_parse_error_exec_missing_script():
 
 
 def test_parse_error_exec_both_script_and_path():
-    raw = '<output>{"response": "R", "action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_path": "/foo"}}</output>'
+    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_path": "/foo"}}</output>'
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -134,7 +134,7 @@ def test_parse_error_exec_both_script_and_path():
 
 
 def test_parse_error_exec_invalid_script_args_type():
-    raw = '<output>{"response": "R", "action": "exec", "action_input": {"code_type": "python", "script_path": "skills/x.py", "script_args": {"bad": true}}}</output>'
+    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "python", "script_path": "skills/x.py", "script_args": {"bad": true}}}</output>'
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -143,7 +143,7 @@ def test_parse_error_exec_invalid_script_args_type():
 
 
 def test_parse_error_exec_script_args_with_script():
-    raw = '<output>{"response": "R", "action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_args": ["--bad"]}}</output>'
+    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_args": ["--bad"]}}</output>'
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -152,7 +152,7 @@ def test_parse_error_exec_script_args_with_script():
 
 
 def test_parse_error_delegate_missing_role():
-    raw = '<output>{"response": "D", "action": "delegate", "action_input": {"objective": "o"}}</output>'
+    raw = '<output>{"response": "D", "next_action": "delegate", "action_input": {"objective": "o"}}</output>'
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -161,7 +161,7 @@ def test_parse_error_delegate_missing_role():
 
 
 def test_sub_agent_cannot_delegate():
-    raw = '<output>{"response": "D", "action": "delegate", "action_input": {"role": "r", "objective": "o"}}</output>'
+    raw = '<output>{"response": "D", "next_action": "delegate", "action_input": {"role": "r", "objective": "o"}}</output>'
     try:
         parse_action(raw, allowed_actions=ALLOWED_SUB_ACTIONS)
         assert False, "Should have raised"
@@ -357,7 +357,7 @@ def test_run_loop_notifies_on_compaction_start():
 
     class ChatAgentModel:
         def generate(self, messages, *, chunk_callback=None):
-            return '<output>{"response": "done", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "done", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), token_limit=200, keep_last_k=2,
@@ -420,7 +420,7 @@ def test_run_loop_chat():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None):
-            return '<output>{"response": "Hello user!", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Hello user!", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -440,8 +440,8 @@ def test_run_loop_think_then_chat():
         def generate(self, messages, *, chunk_callback=None):
             call_count[0] += 1
             if call_count[0] == 1:
-                return '<output>{"response": "Let me think...", "action": "think", "action_input": {}}</output>'
-            return '<output>{"response": "Done thinking!", "action": "chat", "action_input": {}}</output>'
+                return '<output>{"response": "Let me think...", "next_action": "think", "action_input": {}}</output>'
+            return '<output>{"response": "Done thinking!", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -464,7 +464,7 @@ def test_run_loop_parse_retry():
             call_count[0] += 1
             if call_count[0] == 1:
                 return "bad output no tags"
-            return '<output>{"response": "Fixed!", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Fixed!", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -513,13 +513,13 @@ def test_run_loop_exec_denied_returns_control():
                 return (
                     '<output>'
                     '{"response": "Checking status.", '
-                    '"action": "exec", '
+                    '"next_action": "exec", '
                     '"action_input": {"job_name": "check-status", "code_type": "bash", "script": "echo x"}}'
                     '</output>'
                 )
             return (
                 '<output>'
-                '{"response": "This should not run.", "action": "chat", "action_input": {}}'
+                '{"response": "This should not run.", "next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -549,13 +549,13 @@ def test_run_loop_exec_cancelled_returns_control():
                 return (
                     '<output>'
                     '{"response": "Checking status.", '
-                    '"action": "exec", '
+                    '"next_action": "exec", '
                     '"action_input": {"job_name": "check-status", "code_type": "bash", "script": "echo x"}}'
                     '</output>'
                 )
             return (
                 '<output>'
-                '{"response": "This should not run.", "action": "chat", "action_input": {}}'
+                '{"response": "This should not run.", "next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -589,7 +589,7 @@ def test_run_loop_transient_error_retries_then_succeeds():
             call_count[0] += 1
             if call_count[0] == 1:
                 raise LLMTransientError("LLM HTTP 503: overloaded", status_code=503)
-            return '<output>{"response": "Recovered!", "action": "chat", "action_input": {}}</output>'
+            return '<output>{"response": "Recovered!", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))

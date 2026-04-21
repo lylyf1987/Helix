@@ -60,7 +60,7 @@ def parse_action(
         <output>
         {
           "response": "...",
-          "action": "chat" | "think" | "exec" | "delegate",
+          "next_action": "chat" | "think" | "exec" | "delegate",
           "action_input": {}
         }
         </output>
@@ -95,7 +95,7 @@ def parse_action(
 
     # 3. Extract required keys
     response = payload.get("response") or ""
-    action_type = str(payload.get("action", "")).strip().lower()
+    action_type = str(payload.get("next_action", "")).strip().lower()
     action_input = payload.get("action_input", {})
 
     if not response:
@@ -107,7 +107,7 @@ def parse_action(
     # 4. Validate action type
     if action_type not in allowed_actions:
         raise ActionParseError(
-            f"Invalid action '{action_type}'. Must be one of: {sorted(allowed_actions)}.",
+            f"Invalid next_action '{action_type}'. Must be one of: {sorted(allowed_actions)}.",
             raw_text=raw_llm_output,
         )
 
