@@ -70,12 +70,12 @@ def _analyze_task_plan_content(content: str) -> dict[str, Any]:
     }
 
 
-def analyze_session() -> tuple[dict[str, Any], int]:
-    cwd = Path.cwd()
+def analyze_session(output_dir: Path | None = None) -> tuple[dict[str, Any], int]:
+    base_dir = Path(output_dir) if output_dir is not None else Path.cwd()
     files: dict[str, Any] = {}
 
     for filename in _PLANNING_FILES:
-        files[filename] = _file_info(cwd / filename)
+        files[filename] = _file_info(base_dir / filename)
 
     existing_files = [name for name, info in files.items() if bool(info.get("exists"))]
     file_errors = [name for name, info in files.items() if str(info.get("error", "")).strip()]
@@ -108,7 +108,7 @@ def analyze_session() -> tuple[dict[str, Any], int]:
             latest_time = str(info.get("modified", ""))
 
     task_plan_info = files.get("task_plan.md", {})
-    task_plan_path = cwd / "task_plan.md"
+    task_plan_path = base_dir / "task_plan.md"
 
     if bool(task_plan_info.get("exists")):
         try:
@@ -166,12 +166,24 @@ def analyze_session() -> tuple[dict[str, Any], int]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Session catchup helper")
     parser.add_argument("--json", action="store_true", help="Kept for compatibility; JSON is always stdout")
+    parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Directory containing planning files (default: current working directory)",
+    )
     args = parser.parse_args()
 
     _ = args.json
 
     try:
-        payload, code = analyze_session()
+        output_dir: Path | None = None
+        raw_out = str(args.output_dir or "").strip()
+        if raw_out:
+            out_path = Path(raw_out).expanduser()
+            if not out_path.is_absolute():
+                out_path = Path.cwd() / out_path
+            output_dir = out_path.resolve()
+        payload, code = analyze_session(output_dir=output_dir)
         print(json.dumps(payload, ensure_ascii=True))
         return int(code)
     except Exception as exc:  # unexpected runtime failure

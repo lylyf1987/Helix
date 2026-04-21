@@ -37,8 +37,12 @@ def _output(
     }
 
 
-def check_complete(plan_file: str = "task_plan.md") -> tuple[dict[str, Any], int]:
-    plan_path = Path.cwd() / str(plan_file)
+def check_complete(
+    plan_file: str = "task_plan.md",
+    output_dir: Path | None = None,
+) -> tuple[dict[str, Any], int]:
+    base_dir = Path(output_dir) if output_dir is not None else Path.cwd()
+    plan_path = base_dir / str(plan_file)
 
     if not plan_path.exists():
         return (
@@ -122,10 +126,22 @@ def check_complete(plan_file: str = "task_plan.md") -> tuple[dict[str, Any], int
 def main() -> int:
     parser = argparse.ArgumentParser(description="Check planning completion status")
     parser.add_argument("--plan-file", default="task_plan.md", help="Path to task plan file")
+    parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Directory containing task_plan.md (default: current working directory)",
+    )
     args = parser.parse_args()
 
     try:
-        out, code = check_complete(args.plan_file)
+        output_dir: Path | None = None
+        raw_out = str(args.output_dir or "").strip()
+        if raw_out:
+            out_path = Path(raw_out).expanduser()
+            if not out_path.is_absolute():
+                out_path = Path.cwd() / out_path
+            output_dir = out_path.resolve()
+        out, code = check_complete(args.plan_file, output_dir=output_dir)
         print(json.dumps(out, ensure_ascii=True))
         return int(code)
     except Exception as exc:  # unexpected runtime failure

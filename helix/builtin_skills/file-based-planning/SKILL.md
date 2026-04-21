@@ -50,14 +50,20 @@ Filesystem = Disk (persistent, unlimited)
 | `findings.md` | Research, discoveries | After ANY discovery |
 | `progress.md` | Session log, test results | Throughout session |
 
+# Work Path
+
+Planning files live under your session's **`DOCS_ROOT`** (see the Workspace section of your system prompt for the resolved absolute path), NOT the workspace root. This keeps each session's plan, findings, and progress scoped to that session so state does not leak across sessions that share the workspace.
+
+Pass your session's `DOCS_ROOT` as `--output-dir` to every script in this skill. The placeholder `<DOCS_ROOT>` shown in the templates below must be substituted with the actual path you see in your Workspace section.
+
 # Procedure
 
 ## Step 1: Check for Existing Session
 
-Before starting work, check if planning files already exist:
+Before starting work, check if planning files already exist in your `DOCS_ROOT`:
 
 ```bash
-ls task_plan.md findings.md progress.md 2>/dev/null
+ls <DOCS_ROOT>/task_plan.md <DOCS_ROOT>/findings.md <DOCS_ROOT>/progress.md 2>/dev/null
 ```
 
 If files exist:
@@ -104,7 +110,7 @@ Scripts are idempotent and safe to re-run.
 {
   "code_type": "python",
   "script_path": "skills/builtin_skills/file-based-planning/scripts/init_planning.py",
-  "script_args": ["--project-name", "<brief-task-name>"]
+  "script_args": ["--project-name", "<brief-task-name>", "--output-dir", "<DOCS_ROOT>"]
 }
 ```
 
@@ -113,7 +119,8 @@ Scripts are idempotent and safe to re-run.
 ```json
 {
   "code_type": "python",
-  "script_path": "skills/builtin_skills/file-based-planning/scripts/check_complete.py"
+  "script_path": "skills/builtin_skills/file-based-planning/scripts/check_complete.py",
+  "script_args": ["--output-dir", "<DOCS_ROOT>"]
 }
 ```
 
@@ -123,7 +130,7 @@ Scripts are idempotent and safe to re-run.
 {
   "code_type": "python",
   "script_path": "skills/builtin_skills/file-based-planning/scripts/session_catchup.py",
-  "script_args": []
+  "script_args": ["--output-dir", "<DOCS_ROOT>"]
 }
 ```
 
@@ -137,6 +144,7 @@ Scripts are idempotent and safe to re-run.
   "action": "init",
   "status": "ok|partial|error|dry_run",
   "project_name": "string",
+  "output_dir": "string",
   "created": ["task_plan.md", "findings.md", "progress.md"],
   "skipped": [],
   "errors": [],
@@ -272,7 +280,7 @@ Templates stored in `skills/builtin_skills/file-based-planning/templates/`:
 
 # Notes
 
-- Planning files go in project working directory, not skill folder
+- Planning files live in your session's `DOCS_ROOT` (pass `--output-dir <DOCS_ROOT>`), not the workspace root or skill folder
 - Use `exec` action to run helper scripts
 - Update phase status: pending → in_progress → complete
 - Re-read plan before major decisions (attention manipulation)

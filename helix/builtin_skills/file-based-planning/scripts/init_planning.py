@@ -29,11 +29,22 @@ def _resolve_templates_dir(raw_templates_dir: str) -> Path:
     return (Path(__file__).resolve().parent.parent / "templates").resolve()
 
 
+def _resolve_output_dir(raw_output_dir: str) -> Path:
+    raw = str(raw_output_dir or "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        return path.resolve()
+    return Path.cwd().resolve()
+
+
 def _build_output(
     *,
     status: str,
     project_name: str,
     templates_dir: Path,
+    output_dir: Path,
     created: list[str],
     skipped: list[str],
     errors: list[str],
@@ -45,6 +56,7 @@ def _build_output(
         "status": status,
         "project_name": project_name,
         "templates_dir": str(templates_dir),
+        "output_dir": str(output_dir),
         "created": created,
         "skipped": skipped,
         "errors": errors,
@@ -53,15 +65,20 @@ def _build_output(
     }
 
 
-def init_planning(*, project_name: str, templates_dir: Path) -> tuple[dict[str, Any], int]:
-    cwd = Path.cwd()
+def init_planning(
+    *,
+    project_name: str,
+    templates_dir: Path,
+    output_dir: Path,
+) -> tuple[dict[str, Any], int]:
+    output_dir.mkdir(parents=True, exist_ok=True)
     created: list[str] = []
     skipped: list[str] = []
     errors: list[str] = []
 
     for filename in _TEMPLATE_NAMES:
         template_path = templates_dir / filename
-        target_path = cwd / filename
+        target_path = output_dir / filename
 
         if target_path.exists():
             skipped.append(filename)
@@ -108,6 +125,7 @@ def init_planning(*, project_name: str, templates_dir: Path) -> tuple[dict[str, 
             status=status,
             project_name=project_name,
             templates_dir=templates_dir,
+            output_dir=output_dir,
             created=created,
             skipped=skipped,
             errors=errors,
@@ -121,6 +139,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Initialize planning files from skill templates.")
     parser.add_argument("--project-name", default="project", help="Name of the project/task")
     parser.add_argument("--templates-dir", default="", help="Optional templates directory override")
+    parser.add_argument(
+        "--output-dir",
+        default="",
+        help="Directory where planning files are written (default: current working directory)",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Show resolved paths without writing files")
     return parser.parse_args()
 
@@ -131,12 +154,14 @@ def main() -> int:
 
     try:
         templates_dir = _resolve_templates_dir(str(args.templates_dir))
+        output_dir = _resolve_output_dir(str(args.output_dir))
 
         if bool(args.dry_run):
             out = _build_output(
                 status="dry_run",
                 project_name=project_name,
                 templates_dir=templates_dir,
+                output_dir=output_dir,
                 created=[],
                 skipped=[],
                 errors=[],
@@ -145,7 +170,11 @@ def main() -> int:
             print(json.dumps(out, ensure_ascii=True))
             return 0
 
-        out, code = init_planning(project_name=project_name, templates_dir=templates_dir)
+        out, code = init_planning(
+            project_name=project_name,
+            templates_dir=templates_dir,
+            output_dir=output_dir,
+        )
         print(json.dumps(out, ensure_ascii=True))
         return int(code)
     except Exception as exc:  # unexpected runtime failure
@@ -153,6 +182,7 @@ def main() -> int:
             status="error",
             project_name=project_name,
             templates_dir=Path("."),
+            output_dir=Path("."),
             created=[],
             skipped=[],
             errors=[f"unexpected_exception:{exc}"],
