@@ -467,8 +467,11 @@ def test_sub_agent_sigint_propagates_past_delegate():
             run_loop(agent, env, model=model, output=StringIO(), max_turns=5)
         except UserInterrupted as exc:
             raised = True
-            assert "terminated by user" in exc.observation.content.lower() \
-                or "keyboardinterrupt" in exc.observation.content.lower()
+            # Content is the role-prefixed lean form produced by the
+            # sub-agent's run_loop exec branch.
+            assert "sub_agent" in exc.observation.content
+            assert "interrupted by user" in exc.observation.content
+            assert exc.observation.role == "runtime"
 
         t.join(timeout=2)
         executor.shutdown()
@@ -476,6 +479,18 @@ def test_sub_agent_sigint_propagates_past_delegate():
         assert raised, "run_loop must propagate UserInterrupted through the delegate branch"
         assert model.sub_calls == 1
         assert not model.core_second_call, "core agent should not have taken a second turn"
+
+        # Core env should have recorded the interrupt as a runtime turn
+        # (not role="sub_agent" as in the old implementation).
+        runtime_turns = [t for t in env.full_history if t.role == "runtime"]
+        sub_prefixed_interrupts = [
+            t for t in runtime_turns
+            if "sub_agent" in t.content and "interrupted by user" in t.content
+        ]
+        assert sub_prefixed_interrupts, (
+            f"expected a runtime-role sub_agent-prefixed interrupt turn in core env, "
+            f"got roles: {[t.role for t in env.full_history]}"
+        )
         print("  Sub-agent SIGINT propagates past delegate OK")
 
 

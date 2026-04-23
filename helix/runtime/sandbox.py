@@ -121,12 +121,20 @@ class HostSandboxExecutor:
             # User-initiated interrupt — kill the child and raise
             # UserInterrupted so every loop layer (sub-agent, delegate,
             # core, REPL) unwinds cleanly rather than silently continuing.
+            # The Turn is deliberately minimal; the loop layer that catches
+            # this will prefix it with the agent's role for readability.
             self._kill_process(process)
-            result = self._collect_result(
-                process, stdout_path, stderr_path,
-                extra_stderr="\nruntime> exec terminated by user (KeyboardInterrupt)",
-            )
-            raise UserInterrupted(self._build_result_turn(job_name, result))
+            # Drop the log files — the subprocess was killed, captured bytes
+            # aren't useful and the shared logs dir is shared across jobs.
+            for path in (stdout_path, stderr_path):
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    pass
+            raise UserInterrupted(Turn(
+                role="runtime",
+                content=f"exec '{job_name}' interrupted by user",
+            ))
         return self._build_result_turn(job_name, result)
 
     # ----- Input / command construction ------------------------------------ #
@@ -194,8 +202,8 @@ class HostSandboxExecutor:
         """Wait for the subprocess; handle timeout.
 
         KeyboardInterrupt is deliberately *not* caught here — it propagates
-        to ``__call__`` so it can raise ``ExecutionInterrupted`` and return
-        control to the REPL instead of just producing a completion Turn.
+        to ``__call__`` so it can raise ``UserInterrupted`` and unwind the
+        loop layers up to the REPL instead of just producing a completion Turn.
         """
         try:
             process.wait(timeout=timeout_seconds)

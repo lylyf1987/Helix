@@ -13,7 +13,7 @@ from typing import Any, TextIO, Callable
 
 from ..core.action import Action, ActionParseError, ALLOWED_SUB_ACTIONS
 from ..core.agent import Agent
-from ..core.environment import Environment, CompactionError, ExecutionInterrupted, UserInterrupted
+from ..core.environment import Environment, CompactionError, UserInterrupted
 from ..core.state import State, Turn
 from ..providers.openai_compat import LLMTransientError
 from . import sub_agent_meta
@@ -57,8 +57,12 @@ def run_loop(
         so the agent sees it on the next turn and can adjust its output. After
         ``DEFAULT_PARSE_RETRIES`` consecutive failures the loop bails out
         (stuck-state detection, independent of ``max_turns``).
-      * ``ExecutionInterrupted`` is *pass-through*: the observation is recorded
-        and the loop returns immediately so the requester can react.
+      * ``UserInterrupted`` is *unwind-everything*: a Ctrl+C during exec
+        records the interrupt turn at every loop layer (sub-agent, delegate,
+        core) and re-raises, so control returns to the REPL in one hop.
+      * Approval denials are *data*: ``env.execute`` returns the denial Turn
+        like any other observation, the loop records it, and the agent
+        reacts on its next turn — no exception involved.
 
     Args:
         agent: The LLM-based agent.
@@ -169,16 +173,18 @@ def run_loop(
             try:
                 observation = env.execute(action)
             except UserInterrupted as exc:
-                # User abort: record the interrupt turn into this loop's
-                # history and re-raise so every enclosing layer (delegate
-                # branch, parent run_loop, REPL) unwinds cleanly.
-                env.record(exc.observation)
-                _print(output, f"runtime> {exc.observation.content}\n")
-                raise
-            except ExecutionInterrupted as exc:
-                env.record(exc.observation)
-                _print(output, f"runtime> {exc.observation.content}\n")
-                return exc.observation.content
+                # User abort: tag the interrupt with this loop's agent role
+                # so the stored Turn is self-describing ("core_agent exec ..."
+                # vs "sub_agent exec ..."). Record, print once, then re-raise
+                # so every enclosing layer (delegate branch, parent run_loop,
+                # REPL) unwinds cleanly.
+                prefixed = Turn(
+                    role="runtime",
+                    content=f"{agent.role} {exc.observation.content}",
+                )
+                env.record(prefixed)
+                _print(output, f"runtime> {prefixed.content}\n")
+                raise UserInterrupted(prefixed)
             env.record(observation)
             continue
         elif action.type == "delegate":
@@ -200,10 +206,11 @@ def run_loop(
                 )
                 env.record(Turn(role="sub_agent", content=result))
             except UserInterrupted as exc:
-                # Sub-agent exec was user-aborted: record the interrupt in
-                # the core agent's history and keep unwinding.
-                env.record(Turn(role="sub_agent", content=exc.observation.content))
-                _print(output, f"runtime> {exc.observation.content}\n")
+                # Sub-agent's run_loop already prefixed the Turn with its
+                # own role ("sub_agent exec 'X' interrupted by user") and
+                # printed it. Mirror the record into the core env and
+                # keep unwinding — no second print.
+                env.record(exc.observation)
                 raise
             except Exception as exc:
                 failure = (

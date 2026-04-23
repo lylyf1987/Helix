@@ -96,9 +96,8 @@ def test_host_sandbox_failure_exit_code():
             executor.shutdown()
 
 
-def test_host_sandbox_keyboard_interrupt_raises_execution_interrupted():
-    """SIGINT during exec must raise ExecutionInterrupted so run_loop returns
-    to the caller instead of continuing to the next agent turn."""
+def test_host_sandbox_keyboard_interrupt_raises_user_interrupted():
+    """SIGINT during exec must raise UserInterrupted with a lean, job-named Turn."""
     import os
     import signal
     import threading
@@ -130,9 +129,12 @@ def test_host_sandbox_keyboard_interrupt_raises_execution_interrupted():
             )
         except UserInterrupted as exc:
             raised = True
-            assert "terminated by user" in exc.observation.content.lower() \
-                or "keyboardinterrupt" in exc.observation.content.lower(), \
-                f"unexpected content: {exc.observation.content}"
+            assert exc.observation.role == "runtime"
+            assert "sigint-job" in exc.observation.content
+            assert "interrupted by user" in exc.observation.content
+            # Lean Turn: no <stderr> wrapping, no exit-code header.
+            assert "<stderr>" not in exc.observation.content
+            assert "Exit code" not in exc.observation.content
         finally:
             t.join(timeout=2)
             executor.shutdown()
@@ -194,7 +196,7 @@ if __name__ == "__main__":
     test_host_sandbox_python_execution()
     test_host_sandbox_writes_workspace_file()
     test_host_sandbox_failure_exit_code()
-    test_host_sandbox_keyboard_interrupt_raises_execution_interrupted()
+    test_host_sandbox_keyboard_interrupt_raises_user_interrupted()
     test_host_sandbox_timeout_kills_runaway()
     test_host_sandbox_env_forwarding()
     print("\n✅ All host sandbox tests passed!")

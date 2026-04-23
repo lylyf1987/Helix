@@ -231,15 +231,26 @@ def test_approval_policy_uses_injected_prompt_instead_of_raw_input():
 
 
 def test_approval_policy_keyboard_interrupt_cancels():
+    """Ctrl+C at the approval prompt raises UserInterrupted so the outer
+    run_loop unwinds to the REPL (same as Ctrl+C during exec)."""
+    from helix.core.environment import UserInterrupted
+
     policy = ApprovalPolicy(
         mode="controlled",
         prompt=lambda _prompt: (_ for _ in ()).throw(KeyboardInterrupt()),
     )
     env = Environment(workspace=Path("."))
     action = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo x"})
-    result = policy(env, action)
-    assert isinstance(result, Turn)
-    assert "cancelled during approval prompt" in result.content.lower()
+
+    raised = False
+    try:
+        policy(env, action)
+    except UserInterrupted as exc:
+        raised = True
+        assert exc.observation.role == "runtime"
+        assert "cancelled by user" in exc.observation.content
+
+    assert raised, "approval Ctrl+C must raise UserInterrupted, not return a Turn"
     print("  Approval keyboard interrupt cancels OK")
 
 

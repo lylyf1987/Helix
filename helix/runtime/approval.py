@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 from helix.core.action import Action
-from helix.core.environment import ApprovalResult, Environment
+from helix.core.environment import ApprovalResult, Environment, UserInterrupted
 from helix.core.state import Turn
 from helix.runtime.display import iter_exec_payload_items, write_approval
 
@@ -215,15 +215,17 @@ class ApprovalPolicy:
             choice = self._prompt("> ").strip().lower()
             print()  # blank line after approval input
         except EOFError:
-            return Turn(
+            # stdin closed — the user can't answer, treat as abort.
+            raise UserInterrupted(Turn(
                 role="runtime",
-                content="Execution cancelled during approval prompt (input closed).",
-            )
+                content="approval prompt input closed",
+            ))
         except KeyboardInterrupt:
-            return Turn(
+            # Ctrl+C at the approval prompt is a user abort; unwind to REPL.
+            raise UserInterrupted(Turn(
                 role="runtime",
-                content="Execution cancelled during approval prompt by requester.",
-            )
+                content="approval prompt cancelled by user",
+            ))
 
         if choice in {"y", "yes", "once"}:
             return True

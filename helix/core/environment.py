@@ -15,28 +15,13 @@ from .compactor import Compactor, CompactionError
 from .state import State, Turn
 
 
-class ExecutionInterrupted(RuntimeError):
-    """Raised when execution should stop and control should return to the requester.
-
-    Semantically scoped to "the current loop level" — e.g. an approval denial
-    stops the current exec and lets the next agent turn react. Sub-agent
-    runs that raise this still propagate only up to the ``_delegate``
-    boundary, where the core run_loop continues.
-    """
-
-    def __init__(self, observation: Turn) -> None:
-        super().__init__(observation.content)
-        self.observation = observation
-
-
 class UserInterrupted(Exception):
     """Raised when the user aborts an exec via SIGINT (Ctrl+C).
 
-    Distinct from ``ExecutionInterrupted``: this signal must unwind all
-    levels — from the executing subprocess, through any sub-agent loop,
-    through the delegate branch, all the way back to the REPL. Every
-    layer records its own observation of the interrupt as it unwinds,
-    then re-raises so the next level up sees the same signal.
+    Must unwind every level — from the executing subprocess, through any
+    sub-agent loop, through the delegate branch, all the way back to the
+    REPL. Every layer records its own observation of the interrupt as it
+    unwinds, then re-raises so the next level up sees the same signal.
     """
 
     def __init__(self, observation: Turn) -> None:
@@ -183,13 +168,14 @@ class Environment:
         if self._on_before_execute:
             decision = self._on_before_execute(self, action)
             if isinstance(decision, Turn):
-                raise ExecutionInterrupted(decision)
+                # Approval hook returned a Turn — the exec was refused and
+                # the Turn describes why. Return it as the observation so the
+                # calling agent sees the refusal on its next turn.
+                return decision
             if not decision:
-                raise ExecutionInterrupted(
-                    Turn(
-                        role="runtime",
-                        content="Execution denied by approval policy.",
-                    )
+                return Turn(
+                    role="runtime",
+                    content="Execution denied by approval policy.",
                 )
 
         if self._executor is None:

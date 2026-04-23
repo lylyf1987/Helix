@@ -502,8 +502,9 @@ def test_run_loop_max_retries():
         loop_module.DEFAULT_PARSE_RETRIES = original_retries
 
 
-def test_run_loop_exec_denied_returns_control():
-    """Test that approval denial records evidence and returns to requester."""
+def test_run_loop_exec_denied_agent_reacts():
+    """Approval denial is recorded as an observation; the agent takes another
+    turn to react to it (vs. the old ExecutionInterrupted early-return)."""
     call_count = [0]
 
     class MockModel:
@@ -519,7 +520,8 @@ def test_run_loop_exec_denied_returns_control():
                 )
             return (
                 '<output>'
-                '{"response": "This should not run.", "next_action": "chat", "action_input": {}}'
+                '{"response": "Understood, I will not run that.", '
+                '"next_action": "chat", "action_input": {}}'
                 '</output>'
             )
 
@@ -530,16 +532,20 @@ def test_run_loop_exec_denied_returns_control():
         agent = Agent(MockModel(), workspace=Path(td))
         result = run_loop(agent, env, output=sys.stderr)
 
-        assert "denied by requester" in result.lower()
-        assert call_count[0] == 1
+        # Agent reacted on its second turn and chatted back.
+        assert "will not run" in result.lower()
+        assert call_count[0] == 2
+        # Denial was recorded as a plain observation, not an exception turn.
         runtime_turns = [t for t in env.full_history if t.role == "runtime"]
-        assert len(runtime_turns) == 1
-        assert "denied by requester" in runtime_turns[0].content.lower()
-        print("  run_loop (exec denied returns control) OK")
+        assert any("denied by requester" in t.content.lower() for t in runtime_turns)
+        print("  run_loop (denial → agent reacts) OK")
 
 
 def test_run_loop_exec_cancelled_returns_control():
-    """Test that approval cancel records evidence and returns to requester."""
+    """Ctrl+C at the approval prompt is a user abort: UserInterrupted unwinds
+    run_loop back to the REPL caller without the agent taking another turn."""
+    from helix.core.environment import UserInterrupted
+
     call_count = [0]
 
     class MockModel:
@@ -553,11 +559,9 @@ def test_run_loop_exec_cancelled_returns_control():
                     '"action_input": {"job_name": "check-status", "code_type": "bash", "script": "echo x"}}'
                     '</output>'
                 )
-            return (
-                '<output>'
-                '{"response": "This should not run.", "next_action": "chat", "action_input": {}}'
-                '</output>'
-            )
+            # Unreachable under the new semantics; if the test sees call 2
+            # something went wrong with the unwind.
+            raise AssertionError("run_loop should have unwound before a second agent turn")
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), mode="controlled")
@@ -567,14 +571,26 @@ def test_run_loop_exec_cancelled_returns_control():
         ))
         env.record(Turn(role="user", content="check status"))
         agent = Agent(MockModel(), workspace=Path(td))
-        result = run_loop(agent, env, output=sys.stderr)
 
-        assert "cancelled during approval prompt" in result.lower()
+        raised = False
+        try:
+            run_loop(agent, env, output=sys.stderr)
+        except UserInterrupted as exc:
+            raised = True
+            assert "cancelled by user" in exc.observation.content
+            # Loop prefixed with the agent's role on its way up.
+            assert "core_agent" in exc.observation.content
+            assert exc.observation.role == "runtime"
+
+        assert raised, "run_loop must raise UserInterrupted on Ctrl+C at approval prompt"
         assert call_count[0] == 1
+        # Core env should have the prefixed interrupt turn recorded.
         runtime_turns = [t for t in env.full_history if t.role == "runtime"]
-        assert len(runtime_turns) == 1
-        assert "cancelled during approval prompt" in runtime_turns[0].content.lower()
-        print("  run_loop (exec cancelled returns control) OK")
+        assert any(
+            "core_agent" in t.content and "cancelled by user" in t.content
+            for t in runtime_turns
+        )
+        print("  run_loop (approval Ctrl+C → UserInterrupted) OK")
 
 
 def test_run_loop_transient_error_retries_then_succeeds():
@@ -707,7 +723,7 @@ if __name__ == "__main__":
     test_run_loop_think_then_chat()
     test_run_loop_parse_retry()
     test_run_loop_max_retries()
-    test_run_loop_exec_denied_returns_control()
+    test_run_loop_exec_denied_agent_reacts()
     test_run_loop_exec_cancelled_returns_control()
     test_run_loop_compaction_failure_records_runtime_turn()
     test_run_loop_notifies_on_compaction_start()
