@@ -105,7 +105,7 @@
     "- Do not duplicate action details in the `response` field.",
     "- Before using a skill, read its SKILL.md first.",
     "- Never write to or modify the .state directory.",
-    "- Do not write outside {{WORKSPACE_ROOT}} unless the user explicitly asks.",
+    "- Do not write outside {{WORKSPACE_ROOT}} unless the user explicitly asks (such writes require explicit user approval and will interrupt the workflow).",
     "- All three keys (`response`, `next_action`, `action_input`) are required in output.",
     "- The `response` field must be non-empty.",
     "- The JSON must be valid — no trailing commas, no comments, no unquoted keys."
@@ -196,7 +196,7 @@
     "- Do not duplicate action details in the `response` field.",
     "- Before using a skill, read its SKILL.md first.",
     "- Never write to or modify the .state directory.",
-    "- Do not write outside {{WORKSPACE_ROOT}} unless the core agent's context explicitly asks.",
+    "- Do not write outside {{WORKSPACE_ROOT}} unless the core agent's context explicitly asks (such writes require explicit user approval and will interrupt the workflow).",
     "- All three keys (`response`, `next_action`, `action_input`) are required in output.",
     "- The `response` field must be non-empty.",
     "- The JSON must be valid — no trailing commas, no comments, no unquoted keys.",
