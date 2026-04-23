@@ -15,7 +15,7 @@ from urllib.request import Request, urlopen
 
 _EXECUTED_SKILL = "analyze-image"
 _MODEL_ID = "glm-ocr"
-_DEFAULT_OLLAMA_BASE_URL = "http://host.docker.internal:11434"
+_DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434"
 
 
 def _utc_now_compact() -> str:

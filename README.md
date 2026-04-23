@@ -2,7 +2,7 @@
 
 **An open, transparent, fully-local agentic system that evolves with you.**
 
-OpenHelix gives an LLM a real computer — a Docker sandbox where it writes and runs bash and python to get things done. Everything runs locally by default; no data leaves your machine unless you choose to connect a hosted LLM. The agent learns over time by creating reusable skills and documenting knowledge as it works.
+OpenHelix gives an LLM a real computer — a host-shell sandbox where it writes and runs bash and python to get things done, gated by an approval prompt you answer in the loop. Everything runs locally by default; no data leaves your machine unless you choose to connect a hosted LLM. The agent learns over time by creating reusable skills and documenting knowledge as it works.
 
 ## Highlights
 
@@ -21,7 +21,7 @@ state → agent → action → environment → state
 
 ![The OpenHelix agentic loop](design.png)
 
-The LLM is the **Agent**. The Docker sandbox is its computer — the hands that affect the **Environment**. **Skills** are reusable procedures. **Knowledge** is documented experience. Every step is grounded by real stdout/stderr evidence from execution.
+The LLM is the **Agent**. The host-shell sandbox is its computer — the hands that affect the **Environment**, with an approval gate you control. **Skills** are reusable procedures. **Knowledge** is documented experience. Every step is grounded by real stdout/stderr evidence from execution.
 
 ## Quick Start
 
@@ -31,7 +31,7 @@ The LLM is the **Agent**. The Docker sandbox is its computer — the hands that 
 pip install -e .
 ```
 
-Requires Docker.
+Requires Python 3.10+. No Docker dependency — the exec sandbox runs on your host shell, and the bundled services (SearXNG, local model service) are managed as pip/venv subprocesses.
 
 ### 2. Your First Session
 
@@ -49,7 +49,7 @@ helix \
   --session-id my-first-session
 ```
 
-You land in an interactive prompt. Type a task in plain English and the agent will plan and execute it inside the Docker sandbox. Type `/help` for commands, `/exit` to quit.
+You land in an interactive prompt. Type a task in plain English and the agent will plan and execute it in the host-shell sandbox. Type `/help` for commands, `/exit` to quit.
 
 **About approval mode.** By default the agent runs in `--mode controlled`, which prompts you to approve every bash/python execution before it runs. You see the job name, the script, and an `[y/N/s/p/k]` menu — this is how OpenHelix keeps you in the loop on every concrete action the agent takes. If you trust the task and want the agent to run autonomously without prompts, start it with `--mode auto`. The two valid values are `controlled` (default) and `auto`.
 
@@ -86,7 +86,7 @@ helix \
 When you send a task, the agent:
 
 1. **Plans** — decides which skills apply and loads their `SKILL.md`.
-2. **Acts** — writes bash or python and runs it inside the Docker sandbox.
+2. **Acts** — writes bash or python and runs it in the host-shell sandbox (subject to your approval in controlled mode).
 3. **Observes** — reads stdout/stderr, updates its plan, and continues.
 4. **Learns** — documents anything reusable into the knowledge library, optionally creates a new skill.
 5. **Resumes** — saves session state so you can pick up later with the same `--session-id`.

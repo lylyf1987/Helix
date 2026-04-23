@@ -79,7 +79,10 @@ class Environment:
         self.mode = mode
         self.token_limit = token_limit
         self.keep_last_k = keep_last_k
-        self.approval_profile = "docker-online-rw-workspace-v1"
+        # Set by the runtime after the executor is attached (see RuntimeHost
+        # in helix/runtime/host.py) — this default just avoids AttributeError
+        # in cases where an Environment is used without a configured executor.
+        self.approval_profile = ""
 
         # Pluggable executor
         self._executor = executor

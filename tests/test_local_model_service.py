@@ -158,7 +158,7 @@ def test_local_model_service_auth_and_request_validation(monkeypatch: pytest.Mon
         manager = _start_manager(workspace, monkeypatch)
         try:
             env = manager.tool_environment()
-            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"].replace("host.docker.internal", "127.0.0.1")
+            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"]
 
             # Missing auth token
             status, _, parsed = _http_json_request(
@@ -201,7 +201,7 @@ def test_local_model_service_worker_switch_and_idle_eviction(monkeypatch: pytest
         manager = _start_manager(workspace, monkeypatch, idle_seconds=1)
         try:
             env = manager.tool_environment()
-            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"].replace("host.docker.internal", "127.0.0.1")
+            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"]
             token = env["HELIX_LOCAL_MODEL_SERVICE_TOKEN"]
 
             # Prepare both models
@@ -278,7 +278,7 @@ def test_local_model_service_prepare_api_roundtrip_for_model_spec(monkeypatch: p
         manager = _start_manager(workspace, monkeypatch)
         try:
             env = manager.tool_environment()
-            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"].replace("host.docker.internal", "127.0.0.1")
+            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"]
             status, _, parsed = _http_json_request(
                 method="POST",
                 url=f"{base_url}/models/prepare",
@@ -303,7 +303,7 @@ def test_local_model_service_model_spec_requires_prepare(monkeypatch: pytest.Mon
         manager = _start_manager(workspace, monkeypatch)
         try:
             env = manager.tool_environment()
-            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"].replace("host.docker.internal", "127.0.0.1")
+            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"]
             status, _, parsed = _http_json_request(
                 method="POST",
                 url=f"{base_url}/infer",
@@ -331,7 +331,7 @@ def test_local_model_service_model_spec_infer_after_prepare(monkeypatch: pytest.
         manager = _start_manager(workspace, monkeypatch)
         try:
             env = manager.tool_environment()
-            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"].replace("host.docker.internal", "127.0.0.1")
+            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"]
             token = env["HELIX_LOCAL_MODEL_SERVICE_TOKEN"]
 
             status, _, parsed = _http_json_request(
@@ -552,7 +552,7 @@ def test_local_model_service_rejects_invalid_request_timeout(monkeypatch: pytest
         manager = _start_manager(workspace, monkeypatch)
         try:
             env = manager.tool_environment()
-            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"].replace("host.docker.internal", "127.0.0.1")
+            base_url = env["HELIX_LOCAL_MODEL_SERVICE_URL"]
             status, _, parsed = _http_json_request(
                 method="POST",
                 url=f"{base_url}/infer",

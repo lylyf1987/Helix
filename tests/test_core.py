@@ -503,8 +503,8 @@ def test_run_loop_max_retries():
 
 
 def test_run_loop_exec_denied_agent_reacts():
-    """Approval denial is recorded as an observation; the agent takes another
-    turn to react to it (vs. the old ExecutionInterrupted early-return)."""
+    """Approval denial is recorded as an observation and the agent takes
+    another turn to react to it — rather than exiting the loop."""
     call_count = [0]
 
     class MockModel:

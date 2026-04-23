@@ -116,6 +116,6 @@ This skill is self-contained for image analysis and does not require another ski
 
 # Notes
 
-- This skill calls the local Ollama API directly from inside the Docker sandbox.
+- This skill calls the local Ollama API directly from the host-shell sandbox (default endpoint `http://127.0.0.1:11434`).
 - The built-in model ID is `glm-ocr`.
 - Helix does not start or stop Ollama for this skill; make sure `ollama serve` is running and `glm-ocr` is installed.

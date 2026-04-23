@@ -111,7 +111,7 @@ Use a script when the logic is complex enough that writing it inline every time 
 
 ## Creating a Generative Skill
 
-Generative skills run ML models on the host machine (not in the Docker sandbox, because models need GPU/MPS access and tens of gigabytes of weights). The local model service hosts these models as isolated worker subprocesses, and your skill talks to them via HTTP.
+Generative skills run ML models in a dedicated long-lived worker process (the local model service), separate from the host-shell exec sandbox. Heavy models need per-backend venvs, GPU/MPS access, and tens of gigabytes of weights — the local model service hosts them as isolated worker subprocesses and your skill talks to them over HTTP.
 
 ### Directory Structure
 
@@ -121,8 +121,8 @@ skills/my-gen-skill/
   model_spec.json           Which model weights to download
   host_adapter.py           Host-side plugin that loads and runs the model
   scripts/
-    prepare_model.py        Docker-side script → POSTs /models/prepare
-    generate.py             Docker-side script → POSTs /infer
+    prepare_model.py        Sandbox-side script → POSTs /models/prepare
+    generate.py             Sandbox-side script → POSTs /infer
 ```
 
 Three moving parts: the skill procedure (`SKILL.md`), the model spec (`model_spec.json`), and the host adapter (`host_adapter.py`). The scripts under `scripts/` are thin HTTP clients.
@@ -229,7 +229,7 @@ Key pieces:
 - `_DEPENDENCIES` lists the pip packages the runner needs. `_ensure_worker_dependencies` pip-installs them into the backend's venv on first load.
 - `self.model_root` is the directory where `helix model download` placed the weights.
 - `self.python_bin` is the venv's Python binary.
-- `_request_inputs(payload)` extracts the `inputs` dict from the `/infer` request. `_resolve_workspace_path(...)` safely resolves and validates paths that the Docker-side script passed through.
+- `_request_inputs(payload)` extracts the `inputs` dict from the `/infer` request. `_resolve_workspace_path(...)` safely resolves and validates paths that the sandbox-side script passed through.
 - Return shape uses `self._ok(...)` or `self._error(...)` — these build the JSON the coordinator sends back.
 
 #### Pattern B: Subprocess-per-call backend (shell out to a CLI)
@@ -336,15 +336,15 @@ Sometimes the model you want to run was published as loose Python files on GitHu
 
 The co-located `_runner/<commit>/` subfolder lives next to the model weights, so "download the model" semantically stays crisp — `helix model download` only fetches weights, and the adapter handles its own runtime code.
 
-### Skill Scripts (the Docker-side half)
+### Skill Scripts (the sandbox-side half)
 
-`scripts/prepare_model.py` and `scripts/generate.py` run inside the Docker sandbox. They're thin HTTP clients to the coordinator:
+`scripts/prepare_model.py` and `scripts/generate.py` run in the host-shell exec sandbox. They're thin HTTP clients to the coordinator:
 
 - Read `HELIX_LOCAL_MODEL_SERVICE_URL` and `HELIX_LOCAL_MODEL_SERVICE_TOKEN` from environment.
 - POST the model_spec and inputs to `/models/prepare` or `/infer` respectively.
 - Include `"skill_name"` in every request payload — the coordinator uses it to route to your adapter.
 - Include `"task_type"` (e.g. `"text_to_image"`) in `/infer` requests.
-- Include `"workspace_root": str(Path.cwd().resolve())` in **both** `/models/prepare` and `/infer` requests. The coordinator is a workspace-agnostic global service: it derives `skills_root` from each request's `workspace_root` so a single running coordinator can serve clients from any workspace. The Docker sandbox bind-mounts the workspace at the same host path, so `Path.cwd().resolve()` inside the container is already a path the host-side coordinator can resolve directly.
+- Include `"workspace_root": str(Path.cwd().resolve())` in **both** `/models/prepare` and `/infer` requests. The coordinator is a workspace-agnostic global service: it derives `skills_root` from each request's `workspace_root` so a single running coordinator can serve clients from any workspace. The sandbox runs the skill script with `cwd` set to the workspace, so `Path.cwd().resolve()` is already the path the coordinator uses.
 - Print exactly one JSON object to stdout as the final result — the agent reads stdout to know what happened.
 
 The built-in `generate-image` and `generate-video` skills both have working script examples you can copy and adapt.

@@ -2,7 +2,7 @@
 
 ## What is OpenHelix?
 
-OpenHelix is an open, transparent, fully-local agentic system. It gives an LLM a real computer — a Docker sandbox where it writes and runs bash and python scripts to accomplish tasks. The agent learns over time by creating reusable skills and documenting knowledge in a structured library.
+OpenHelix is an open, transparent, fully-local agentic system. It gives an LLM a real computer — a host-shell sandbox where it writes and runs bash and python scripts to accomplish tasks, gated by an approval prompt you answer in the loop. The agent learns over time by creating reusable skills and documenting knowledge in a structured library.
 
 Everything is designed to run on your own machine. No data leaves your environment unless you choose to connect an external LLM endpoint.
 
@@ -27,11 +27,11 @@ The default setup uses no external services:
 | Component | Local Option |
 |---|---|
 | LLM reasoning | Ollama (llama3.1, deepseek, etc.) |
-| Web search | SearXNG (self-hosted Docker container) |
+| Web search | SearXNG (managed pip/venv subprocess — no Docker) |
 | Image generation | Z-Image (MLX, Apple Silicon) |
 | Audio generation | Qwen3-TTS (PyTorch) |
 | Video generation | LTX-2.3 (MLX, Apple Silicon) |
-| Script execution | Docker sandbox (ephemeral, isolated) |
+| Script execution | Host-shell sandbox (runs on your host, approval-gated in controlled mode) |
 
 Your workspace files, conversation history, knowledge documents, and generated artifacts all stay on your machine.
 
@@ -102,7 +102,7 @@ state → agent → action → environment → state
 | **State** | Built from the observation window + workflow summary (compacted long-term memory) |
 | **Agent** | LLM reads state, produces one action |
 | **Action** | `chat` (respond), `think` (reason), `exec` (run script), or `delegate` (spawn sub-agent) |
-| **Environment** | Executes the action in the Docker sandbox; stdout/stderr flow back into state |
+| **Environment** | Executes the action in the host-shell sandbox (subject to approval); stdout/stderr flow back into state |
 
 The loop repeats until the agent returns control to the user via `chat`. Every decision is grounded by real execution evidence — not simulated tool calls, but actual script output.
 

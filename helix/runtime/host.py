@@ -283,7 +283,7 @@ class RuntimeHost:
         print(f"Workspace: {self.workspace}")
         state = "resumed" if self._session_loaded else "new"
         print(f"Session: {self.session_id} ({state})")
-        print("Sandbox: docker")
+        print(f"Sandbox: {self._sandbox_executor.backend_name}")
         print("Type /help for commands. Type /exit to quit.")
         print("Multiline: Enter adds lines, Ctrl+D submits, Ctrl+C cancels.\n")
 
@@ -393,7 +393,6 @@ class RuntimeHost:
             f"llm_endpoint_url={self._model.endpoint_url}",
             f"llm_model={self._model.model}",
             f"mode={self.mode}",
-            f"sandbox_backend=docker",
             f"workspace={self.workspace}",
             f"session_id={self.session_id}",
             f"session_state={self._session_state()}",

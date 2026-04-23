@@ -37,9 +37,7 @@ Neither location holds any secrets. Everything is plain files you can read, edit
         {session-id}.sub_agent.{role}.{field}.html    HTML snapshots written by /view <field> <role>
 
   .runtime/                                 Runtime scratch space (never committed to git)
-    docker/cache/                           Persistent sandbox cache (pip, npm, venv)
     logs/                                   Per-exec stdout/stderr log files
-    tmp/                                    Temporary files
     builtin_skills_manifest.json            Tracks which built-in skills OpenHelix manages
 ```
 
@@ -57,7 +55,7 @@ Neither location holds any secrets. Everything is plain files you can read, edit
 ~/.helix/
   services/
     searxng/                                SearXNG search service
-      state.json                            Service state (container, network, URL)
+      state.json                            Service state (PID, port, base_url, started_at)
       config/settings.yml                   SearXNG configuration
       data/                                 SearXNG cache
 

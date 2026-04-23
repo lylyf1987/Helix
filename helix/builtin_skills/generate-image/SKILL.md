@@ -173,4 +173,4 @@ This skill is self-contained for image generation and does not require another s
 - `scripts/prepare_model.py` calls `/models/prepare`; `scripts/generate_image.py` calls `/infer`.
 - The built-in backend is `mlx`.
 - The built-in model repo is `uqer1244/MLX-z-image`.
-- The script expects the Docker runtime to inject both `HELIX_LOCAL_MODEL_SERVICE_URL` and `HELIX_LOCAL_MODEL_SERVICE_TOKEN`.
+- The script expects the helix runtime to inject both `HELIX_LOCAL_MODEL_SERVICE_URL` and `HELIX_LOCAL_MODEL_SERVICE_TOKEN` into the exec environment.

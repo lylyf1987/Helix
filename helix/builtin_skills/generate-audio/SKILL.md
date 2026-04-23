@@ -246,6 +246,6 @@ This skill is self-contained for audio generation and does not require another s
 - The built-in backend is `pytorch`.
 - The built-in model repo is `Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice`.
 - The built-in default speaker is `Vivian`; common alternatives include `Ryan`, `Serena`, `Aiden`, `Ono_Anna`, and `Sohee`.
-- The script expects the Docker runtime to inject both `HELIX_LOCAL_MODEL_SERVICE_URL` and `HELIX_LOCAL_MODEL_SERVICE_TOKEN`.
+- The script expects the helix runtime to inject both `HELIX_LOCAL_MODEL_SERVICE_URL` and `HELIX_LOCAL_MODEL_SERVICE_TOKEN` into the exec environment.
 - This model also requires the host machine running the local model service to have `sox` installed and available on `PATH`.
 - On macOS, install it with `brew install sox` before using this skill.
