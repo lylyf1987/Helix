@@ -537,7 +537,7 @@ def test_run_loop_exec_denied_agent_reacts():
         assert call_count[0] == 2
         # Denial was recorded as a plain observation, not an exception turn.
         runtime_turns = [t for t in env.full_history if t.role == "runtime"]
-        assert any("denied by requester" in t.content.lower() for t in runtime_turns)
+        assert any("denied by user" in t.content.lower() for t in runtime_turns)
         print("  run_loop (denial → agent reacts) OK")
 
 

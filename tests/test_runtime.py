@@ -185,7 +185,7 @@ def test_approval_policy_pattern_mode_rejects_script_path():
     )
     result1 = policy(env, action1)
     assert isinstance(result1, Turn)
-    assert "denied by requester" in result1.content.lower()
+    assert "denied by user" in result1.content.lower()
     assert not policy.approved_patterns
 
     action2 = Action(
@@ -199,7 +199,7 @@ def test_approval_policy_pattern_mode_rejects_script_path():
     )
     result2 = policy(env, action2)
     assert isinstance(result2, Turn)
-    assert "denied by requester" in result2.content.lower()
+    assert "denied by user" in result2.content.lower()
     assert len(prompts) == 2
 
     print("  Approval pattern mode rejects script_path OK")
@@ -212,7 +212,7 @@ def test_approval_policy_controlled_deny():
     action = Action(response="", type="exec", payload={"code_type": "bash", "script": "rm -rf /"})
     result = policy(env, action)
     assert isinstance(result, Turn)
-    assert "denied by requester" in result.content.lower()
+    assert "denied by user" in result.content.lower()
     print("  Approval deny OK")
 
 
@@ -341,7 +341,7 @@ def test_approval_policy_exact_match_includes_timeout_seconds():
     )
     result = policy(env, action2)
     assert isinstance(result, Turn)
-    assert "denied by requester" in result.content.lower()
+    assert "denied by user" in result.content.lower()
     assert len(prompts) == 2
     print("  Approval exact match includes timeout_seconds OK")
 

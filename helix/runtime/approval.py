@@ -240,7 +240,7 @@ class ApprovalPolicy:
                 )
                 return Turn(
                     role="runtime",
-                    content="Execution denied by requester during approval prompt.",
+                    content="Execution denied by user during approval prompt.",
                 )
             self.approved_patterns.add(pattern_key)
             return True
@@ -252,10 +252,10 @@ class ApprovalPolicy:
                 write_approval("runtime> 'k' requires a script_path. Denied.", None)
                 return Turn(
                     role="runtime",
-                    content="Execution denied by requester during approval prompt.",
+                    content="Execution denied by user during approval prompt.",
                 )
 
         return Turn(
             role="runtime",
-            content="Execution denied by requester during approval prompt.",
+            content="Execution denied by user during approval prompt.",
         )
