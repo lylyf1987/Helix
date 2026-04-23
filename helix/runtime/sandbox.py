@@ -18,6 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from helix.core.environment import ExecutionInterrupted
 from helix.core.state import Turn
 
 
@@ -114,7 +115,18 @@ class HostSandboxExecutor:
             stdout_file.close()
             stderr_file.close()
 
-        result = self._wait_for_process(process, stdout_path, stderr_path, timeout_seconds)
+        try:
+            result = self._wait_for_process(process, stdout_path, stderr_path, timeout_seconds)
+        except KeyboardInterrupt:
+            # User-initiated interrupt — kill the child and raise
+            # ExecutionInterrupted so run_loop returns to the requester
+            # (the REPL prompt) rather than continuing to the next agent turn.
+            self._kill_process(process)
+            result = self._collect_result(
+                process, stdout_path, stderr_path,
+                extra_stderr="\nruntime> exec terminated by user (KeyboardInterrupt)",
+            )
+            raise ExecutionInterrupted(self._build_result_turn(job_name, result))
         return self._build_result_turn(job_name, result)
 
     # ----- Input / command construction ------------------------------------ #
@@ -179,6 +191,12 @@ class HostSandboxExecutor:
         self, process: subprocess.Popen[Any],
         stdout_path: Path, stderr_path: Path, timeout_seconds: int,
     ) -> dict[str, Any]:
+        """Wait for the subprocess; handle timeout.
+
+        KeyboardInterrupt is deliberately *not* caught here — it propagates
+        to ``__call__`` so it can raise ``ExecutionInterrupted`` and return
+        control to the REPL instead of just producing a completion Turn.
+        """
         try:
             process.wait(timeout=timeout_seconds)
             return self._collect_result(process, stdout_path, stderr_path)
@@ -187,12 +205,6 @@ class HostSandboxExecutor:
             return self._collect_result(
                 process, stdout_path, stderr_path,
                 extra_stderr=f"\nruntime> exec terminated after {timeout_seconds}s timeout",
-            )
-        except KeyboardInterrupt:
-            self._kill_process(process)
-            return self._collect_result(
-                process, stdout_path, stderr_path,
-                extra_stderr="\nruntime> exec terminated by user (KeyboardInterrupt)",
             )
 
     @staticmethod

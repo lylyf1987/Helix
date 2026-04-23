@@ -96,6 +96,51 @@ def test_host_sandbox_failure_exit_code():
             executor.shutdown()
 
 
+def test_host_sandbox_keyboard_interrupt_raises_execution_interrupted():
+    """SIGINT during exec must raise ExecutionInterrupted so run_loop returns
+    to the caller instead of continuing to the next agent turn."""
+    import os
+    import signal
+    import threading
+    import time as _time
+    from helix.core.environment import ExecutionInterrupted
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        executor = HostSandboxExecutor(workspace)
+        my_pid = os.getpid()
+
+        def fire():
+            _time.sleep(0.3)
+            os.kill(my_pid, signal.SIGINT)
+
+        t = threading.Thread(target=fire, daemon=True)
+        t.start()
+
+        raised = False
+        try:
+            executor(
+                {
+                    "job_name": "sigint-job",
+                    "code_type": "bash",
+                    "script": "sleep 30",
+                    "timeout_seconds": 60,
+                },
+                workspace,
+            )
+        except ExecutionInterrupted as exc:
+            raised = True
+            assert "terminated by user" in exc.observation.content.lower() \
+                or "keyboardinterrupt" in exc.observation.content.lower(), \
+                f"unexpected content: {exc.observation.content}"
+        finally:
+            t.join(timeout=2)
+            executor.shutdown()
+
+        assert raised, "executor must raise ExecutionInterrupted on SIGINT, not return a Turn"
+        print("  Host sandbox KeyboardInterrupt raises ExecutionInterrupted OK")
+
+
 def test_host_sandbox_timeout_kills_runaway():
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -149,6 +194,7 @@ if __name__ == "__main__":
     test_host_sandbox_python_execution()
     test_host_sandbox_writes_workspace_file()
     test_host_sandbox_failure_exit_code()
+    test_host_sandbox_keyboard_interrupt_raises_execution_interrupted()
     test_host_sandbox_timeout_kills_runaway()
     test_host_sandbox_env_forwarding()
     print("\n✅ All host sandbox tests passed!")
