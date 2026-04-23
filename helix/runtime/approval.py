@@ -218,13 +218,13 @@ class ApprovalPolicy:
             # stdin closed — the user can't answer, treat as abort.
             raise UserInterrupted(Turn(
                 role="runtime",
-                content="approval prompt input closed",
+                content="approval prompt input was closed.",
             ))
         except KeyboardInterrupt:
             # Ctrl+C at the approval prompt is a user abort; unwind to REPL.
             raise UserInterrupted(Turn(
                 role="runtime",
-                content="approval prompt cancelled by user",
+                content="approval prompt was cancelled by user.",
             ))
 
         if choice in {"y", "yes", "once"}:

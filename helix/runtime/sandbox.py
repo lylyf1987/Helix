@@ -133,7 +133,7 @@ class HostSandboxExecutor:
                     pass
             raise UserInterrupted(Turn(
                 role="runtime",
-                content=f"exec '{job_name}' interrupted by user",
+                content=f"execution '{job_name}' was interrupted by user.",
             ))
         return self._build_result_turn(job_name, result)
 
