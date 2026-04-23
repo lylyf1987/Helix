@@ -406,6 +406,79 @@ def test_delegate_role_description_updates_meta():
         print("  Delegate role_description updates meta OK")
 
 
+def test_sub_agent_sigint_propagates_past_delegate():
+    """Ctrl+C during sub-agent exec must unwind the core run_loop too."""
+    import os
+    import signal
+    import threading
+    import time as _time
+    from helix.core.environment import UserInterrupted
+    from helix.runtime.sandbox import HostSandboxExecutor
+
+    class _SharedModel:
+        def __init__(self):
+            self.core_calls = 0
+            self.sub_calls = 0
+            self.core_second_call = False
+
+        def generate(self, messages, *, chunk_callback=None):
+            sysmsg = messages[0].get("content", "") if messages else ""
+            if "You are a Sub-Agent" in sysmsg:
+                self.sub_calls += 1
+                return (
+                    '<output>{"response": "long work", '
+                    '"next_action": "exec", '
+                    '"action_input": {"job_name": "sub-long", "code_type": "bash", "script": "sleep 30", "timeout_seconds": 60}}</output>'
+                )
+            self.core_calls += 1
+            if self.core_calls == 1:
+                return (
+                    '<output>{"response": "delegating", '
+                    '"next_action": "delegate", '
+                    '"action_input": {"role": "worker", "objective": "sleep"}}</output>'
+                )
+            self.core_second_call = True
+            return (
+                '<output>{"response": "second turn reached", '
+                '"next_action": "chat", "action_input": {}}</output>'
+            )
+
+    with tempfile.TemporaryDirectory() as td:
+        workspace = Path(td)
+        executor = HostSandboxExecutor(workspace)
+        env = Environment(workspace=workspace, executor=executor, mode="auto")
+        env.on_before_execute(ApprovalPolicy(mode="auto"))
+        env.record(Turn(role="user", content="do a long sub-agent exec"))
+
+        model = _SharedModel()
+        agent = Agent(model, workspace=workspace)
+
+        my_pid = os.getpid()
+
+        def fire():
+            _time.sleep(0.8)
+            os.kill(my_pid, signal.SIGINT)
+
+        t = threading.Thread(target=fire, daemon=True)
+        t.start()
+
+        raised = False
+        try:
+            run_loop(agent, env, model=model, output=StringIO(), max_turns=5)
+        except UserInterrupted as exc:
+            raised = True
+            assert "terminated by user" in exc.observation.content.lower() \
+                or "keyboardinterrupt" in exc.observation.content.lower()
+
+        t.join(timeout=2)
+        executor.shutdown()
+
+        assert raised, "run_loop must propagate UserInterrupted through the delegate branch"
+        assert model.sub_calls == 1
+        assert not model.core_second_call, "core agent should not have taken a second turn"
+        print("  Sub-agent SIGINT propagates past delegate OK")
+
+
 def test_delegate_without_state_root_still_works():
     """Delegation works without state_root (no persistence)."""
 
@@ -441,6 +514,7 @@ if __name__ == "__main__":
     print("\n=== Full Delegation Loop ===")
     test_full_delegation_loop()
     test_delegate_with_exec_in_sub_agent()
+    test_sub_agent_sigint_propagates_past_delegate()
 
     print("\n=== Sub-Agent State Persistence ===")
     test_delegate_persists_and_restores_state()

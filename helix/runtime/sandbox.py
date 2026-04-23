@@ -18,7 +18,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from helix.core.environment import ExecutionInterrupted
+from helix.core.environment import UserInterrupted
 from helix.core.state import Turn
 
 
@@ -119,14 +119,14 @@ class HostSandboxExecutor:
             result = self._wait_for_process(process, stdout_path, stderr_path, timeout_seconds)
         except KeyboardInterrupt:
             # User-initiated interrupt — kill the child and raise
-            # ExecutionInterrupted so run_loop returns to the requester
-            # (the REPL prompt) rather than continuing to the next agent turn.
+            # UserInterrupted so every loop layer (sub-agent, delegate,
+            # core, REPL) unwinds cleanly rather than silently continuing.
             self._kill_process(process)
             result = self._collect_result(
                 process, stdout_path, stderr_path,
                 extra_stderr="\nruntime> exec terminated by user (KeyboardInterrupt)",
             )
-            raise ExecutionInterrupted(self._build_result_turn(job_name, result))
+            raise UserInterrupted(self._build_result_turn(job_name, result))
         return self._build_result_turn(job_name, result)
 
     # ----- Input / command construction ------------------------------------ #

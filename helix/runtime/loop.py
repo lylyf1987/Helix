@@ -13,7 +13,7 @@ from typing import Any, TextIO, Callable
 
 from ..core.action import Action, ActionParseError, ALLOWED_SUB_ACTIONS
 from ..core.agent import Agent
-from ..core.environment import Environment, CompactionError, ExecutionInterrupted
+from ..core.environment import Environment, CompactionError, ExecutionInterrupted, UserInterrupted
 from ..core.state import State, Turn
 from ..providers.openai_compat import LLMTransientError
 from . import sub_agent_meta
@@ -168,6 +168,13 @@ def run_loop(
             _print(output, f"runtime> Executing: {action.payload.get('job_name', 'unnamed')}...\n")
             try:
                 observation = env.execute(action)
+            except UserInterrupted as exc:
+                # User abort: record the interrupt turn into this loop's
+                # history and re-raise so every enclosing layer (delegate
+                # branch, parent run_loop, REPL) unwinds cleanly.
+                env.record(exc.observation)
+                _print(output, f"runtime> {exc.observation.content}\n")
+                raise
             except ExecutionInterrupted as exc:
                 env.record(exc.observation)
                 _print(output, f"runtime> {exc.observation.content}\n")
@@ -192,6 +199,12 @@ def run_loop(
                     on_token_chunk=on_token_chunk,
                 )
                 env.record(Turn(role="sub_agent", content=result))
+            except UserInterrupted as exc:
+                # Sub-agent exec was user-aborted: record the interrupt in
+                # the core agent's history and keep unwinding.
+                env.record(Turn(role="sub_agent", content=exc.observation.content))
+                _print(output, f"runtime> {exc.observation.content}\n")
+                raise
             except Exception as exc:
                 failure = (
                     f"Sub-agent {role_name!r} failed with an unexpected error: "

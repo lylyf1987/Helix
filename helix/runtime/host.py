@@ -27,7 +27,7 @@ from prompt_toolkit.styles import Style
 
 from ..core.agent import Agent
 from ..core.compactor import Compactor
-from ..core.environment import Environment
+from ..core.environment import Environment, UserInterrupted
 from ..core.state import Turn
 from .sandbox import HostSandboxExecutor
 from ..providers.openai_compat import LLMProvider
@@ -338,6 +338,11 @@ class RuntimeHost:
                 on_turn_error=display.discard,
                 on_token_chunk=display,
             )
+        except UserInterrupted:
+            # Ctrl+C during exec bubbles up here. The interrupt Turn is
+            # already recorded by run_loop's exec/delegate branches, so
+            # just return silently — the next loop iteration re-prompts.
+            pass
         except RuntimeError as exc:
             message = f"Agent error: {exc}"
             write_runtime(f"runtime> {message}", sys.stdout)

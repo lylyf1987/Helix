@@ -103,7 +103,7 @@ def test_host_sandbox_keyboard_interrupt_raises_execution_interrupted():
     import signal
     import threading
     import time as _time
-    from helix.core.environment import ExecutionInterrupted
+    from helix.core.environment import UserInterrupted
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -128,7 +128,7 @@ def test_host_sandbox_keyboard_interrupt_raises_execution_interrupted():
                 },
                 workspace,
             )
-        except ExecutionInterrupted as exc:
+        except UserInterrupted as exc:
             raised = True
             assert "terminated by user" in exc.observation.content.lower() \
                 or "keyboardinterrupt" in exc.observation.content.lower(), \
@@ -137,8 +137,8 @@ def test_host_sandbox_keyboard_interrupt_raises_execution_interrupted():
             t.join(timeout=2)
             executor.shutdown()
 
-        assert raised, "executor must raise ExecutionInterrupted on SIGINT, not return a Turn"
-        print("  Host sandbox KeyboardInterrupt raises ExecutionInterrupted OK")
+        assert raised, "executor must raise UserInterrupted on SIGINT, not return a Turn"
+        print("  Host sandbox KeyboardInterrupt raises UserInterrupted OK")
 
 
 def test_host_sandbox_timeout_kills_runaway():

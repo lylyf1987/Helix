@@ -16,7 +16,28 @@ from .state import State, Turn
 
 
 class ExecutionInterrupted(RuntimeError):
-    """Raised when execution should stop and control should return to the requester."""
+    """Raised when execution should stop and control should return to the requester.
+
+    Semantically scoped to "the current loop level" — e.g. an approval denial
+    stops the current exec and lets the next agent turn react. Sub-agent
+    runs that raise this still propagate only up to the ``_delegate``
+    boundary, where the core run_loop continues.
+    """
+
+    def __init__(self, observation: Turn) -> None:
+        super().__init__(observation.content)
+        self.observation = observation
+
+
+class UserInterrupted(Exception):
+    """Raised when the user aborts an exec via SIGINT (Ctrl+C).
+
+    Distinct from ``ExecutionInterrupted``: this signal must unwind all
+    levels — from the executing subprocess, through any sub-agent loop,
+    through the delegate branch, all the way back to the REPL. Every
+    layer records its own observation of the interrupt as it unwinds,
+    then re-raises so the next level up sees the same signal.
+    """
 
     def __init__(self, observation: Turn) -> None:
         super().__init__(observation.content)
