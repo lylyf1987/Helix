@@ -220,7 +220,7 @@ class StreamingDisplay:
         """
         stream = self._stream
         if not self._reasoning_active:
-            stream.write(f"\n{_DIM}{_THINKING_PREFIX}")
+            stream.write(f"{_DIM}{_THINKING_PREFIX}")
             self._reasoning_active = True
         stream.write(token)
         stream.flush()
@@ -253,10 +253,12 @@ class StreamingDisplay:
         """End the dim reasoning zone cleanly so later output isn't styled.
 
         No-op if no reasoning zone is open — callers don't need to guard.
+        Emits a trailing blank line so the following badge block (core_agent
+        / sub_agent / runtime) reads as a visually distinct section.
         """
         if not self._reasoning_active:
             return
         stream = self._stream
-        stream.write(f"{_RESET}\n")
+        stream.write(f"{_RESET}\n\n")
         stream.flush()
         self._reasoning_active = False

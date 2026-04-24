@@ -789,14 +789,18 @@ def test_streaming_extractor_not_yet():
 
 
 def test_streaming_display_on_reasoning_emits_dim_prefix():
-    """First reasoning token emits the dim prefix; later tokens just append raw."""
+    """First reasoning token emits the dim prefix; later tokens just append raw.
+
+    The prefix does NOT include a leading newline — that blank line is owned
+    by the caller (see host._process_message's print()).
+    """
     buf = StringIO()
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("abc")
     display.on_reasoning("def")
     written = buf.getvalue()
-    assert written.startswith("\n\033[2mthinking> abc")
+    assert written.startswith("\033[2mthinking> abc")
     assert written.endswith("def")
     assert "\033[0m" not in written  # not closed yet
     print("  StreamingDisplay on_reasoning dim prefix OK")
@@ -811,7 +815,8 @@ def test_streaming_display_content_after_reasoning_closes_dim():
     display.on_content('{"response": "XYZ_FINAL"}')
     written = buf.getvalue()
     assert "\033[2mthinking> hmm" in written
-    assert "\033[0m\n" in written
+    # Closer is reset + newline + blank line (separates from badge block)
+    assert "\033[0m\n\n" in written
     # content is buffered, not yet printed
     assert "XYZ_FINAL" not in written
     print("  StreamingDisplay closes dim on content arrival OK")
