@@ -126,7 +126,7 @@ Everything is inspectable. `/view last_prompt` shows the exact text sent to the 
 
 | Command | Purpose |
 |---|---|
-| `helix --endpoint-url URL --model MODEL --workspace PATH --session-id ID [--mode auto\|controlled]` | Start a session |
+| `helix --endpoint-url URL --model MODEL --workspace PATH --session-id ID [--mode auto\|controlled] [--think enable\|disable] [--effort minimal\|low\|medium\|high]` | Start a session |
 | `helix start searxng` | Start the SearXNG search service |
 | `helix start local-model-service` | Start the local model service |
 | `helix stop searxng \| local-model-service` | Stop a running service |
@@ -134,6 +134,22 @@ Everything is inspectable. `/view last_prompt` shows the exact text sent to the 
 | `helix model download --skill NAME` | Download model weights for a media-generation skill |
 
 `--mode` controls the approval policy: `controlled` (default) prompts you before every bash/python execution; `auto` runs without prompts.
+
+`--think` and `--effort` shape how hard the model reasons. They're optional and independent; omit either to fall back to the server's default.
+
+- **`--think enable|disable`** — binary thinking-mode toggle. Maps to the three common OpenAI-compatible field conventions so a single flag works across servers: `thinking.type` (DeepSeek, Z.ai/GLM), `think` (Ollama), and `chat_template_kwargs.enable_thinking` (vLLM/SGLang Qwen3). Providers that don't recognize a field ignore it.
+- **`--effort minimal|low|medium|high`** — reasoning-effort level, forwarded as `reasoning_effort`. Recognized by OpenAI (GPT-5/o-series), DeepSeek, and Gemini's OpenAI-compatible endpoint. Ignored by providers that don't support effort levels.
+
+Example — DeepSeek with thinking enabled at medium effort:
+
+```bash
+helix \
+  --endpoint-url https://api.deepseek.com/v1 \
+  --api-key $DEEPSEEK_API_KEY \
+  --model deepseek-chat \
+  --think enable --effort medium \
+  --workspace ~/agent --session-id research-01
+```
 
 ## Runtime Commands
 

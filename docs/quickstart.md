@@ -53,6 +53,42 @@ helix \
 
 Any OpenAI-compatible endpoint works — just provide the URL and model name.
 
+## Thinking Mode: `--think` and `--effort`
+
+Modern reasoning-capable models expose two knobs, both optional:
+
+- **`--think enable|disable`** — turn thinking on or off.
+- **`--effort minimal|low|medium|high`** — how hard the model should reason (OpenAI GPT-5/o-series, DeepSeek, Gemini OpenAI-compat).
+
+Omit either flag to fall back to whatever the server does by default. They're independent: you can set one, both, or neither.
+
+```bash
+# DeepSeek with thinking on at medium effort
+helix \
+  --endpoint-url https://api.deepseek.com/v1 \
+  --api-key $DEEPSEEK_API_KEY \
+  --model deepseek-chat \
+  --think enable --effort medium \
+  --workspace ~/my-agent --session-id deep-01
+
+# OpenAI GPT-5 (reasoning is always on — just pick the effort)
+helix \
+  --endpoint-url https://api.openai.com/v1 \
+  --api-key $OPENAI_API_KEY \
+  --model gpt-5 \
+  --effort high \
+  --workspace ~/my-agent --session-id design-01
+
+# Local Ollama Qwen3 — disable thinking for faster replies
+helix \
+  --endpoint-url http://localhost:11434/v1 \
+  --model qwen3:8b \
+  --think disable \
+  --workspace ~/my-agent --session-id quick-chat
+```
+
+Under the hood, `--think` injects the three widely-used field conventions (`thinking.type`, `think`, `chat_template_kwargs.enable_thinking`) and `--effort` injects `reasoning_effort`. Servers that don't recognize a field ignore it silently, so the same flag works across OpenAI, DeepSeek, Z.ai/GLM, Ollama, vLLM/SGLang, and Gemini's OpenAI-compat endpoint. Claude extended thinking uses the Anthropic Messages API and is out of scope for OpenAI-compatible endpoints.
+
 ## What Happened
 
 When you started OpenHelix:
