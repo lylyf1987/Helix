@@ -1,5 +1,6 @@
 """Phase 3 verification tests for providers, context loaders, and prompt builder."""
 
+import json
 import sys
 import tempfile
 from http.client import RemoteDisconnected
@@ -159,6 +160,89 @@ def test_llm_provider_401_raises_permanent_error():
             assert exc.status_code == 401
             assert isinstance(exc, RuntimeError)
     print("  LLMProvider 401 → LLMPermanentError OK")
+
+
+class _MockStreamResponse:
+    """Mock streaming response that yields SSE lines from a list."""
+
+    def __init__(self, lines: list[bytes]) -> None:
+        self._lines = lines
+
+    def __enter__(self) -> "_MockStreamResponse":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+    def __iter__(self):
+        return iter(self._lines)
+
+
+def _capture_generate_payload(provider: LLMProvider) -> dict:
+    """Call provider.generate() with urlopen mocked, return captured payload dict."""
+    captured: dict = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["body"] = json.loads(req.data.decode("utf-8"))
+        return _MockStreamResponse([b"data: [DONE]\n"])
+
+    with patch("helix.providers.openai_compat.urlopen", side_effect=fake_urlopen):
+        provider.generate([{"role": "user", "content": "hello"}])
+    return captured["body"]
+
+
+def test_llm_provider_think_default_omits_fields():
+    """Verify LLMProvider without think flag doesn't send thinking-control fields."""
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
+    body = _capture_generate_payload(provider)
+    assert "think" not in body
+    assert "thinking" not in body
+    assert "chat_template_kwargs" not in body
+    print("  LLMProvider think=None omits fields OK")
+
+
+def test_llm_provider_think_enabled_injects_fields():
+    """Verify think=True injects all known thinking-control field conventions."""
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test", think=True)
+    body = _capture_generate_payload(provider)
+    # DeepSeek / Z.ai / Anthropic-style
+    assert body["thinking"] == {"type": "enabled"}
+    # Ollama
+    assert body["think"] is True
+    # vLLM / SGLang (Qwen3 chat template)
+    assert body["chat_template_kwargs"] == {"enable_thinking": True}
+    print("  LLMProvider think=True injects fields OK")
+
+
+def test_llm_provider_think_disabled_injects_fields():
+    """Verify think=False injects disabled thinking-control fields."""
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test", think=False)
+    body = _capture_generate_payload(provider)
+    assert body["thinking"] == {"type": "disabled"}
+    assert body["think"] is False
+    assert body["chat_template_kwargs"] == {"enable_thinking": False}
+    print("  LLMProvider think=False injects fields OK")
+
+
+def test_llm_provider_effort_default_omits_field():
+    """Verify LLMProvider without reasoning_effort doesn't send that field."""
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
+    body = _capture_generate_payload(provider)
+    assert "reasoning_effort" not in body
+    print("  LLMProvider reasoning_effort=None omits field OK")
+
+
+def test_llm_provider_effort_injects_field():
+    """Verify reasoning_effort is forwarded to the request payload."""
+    for level in ("minimal", "low", "medium", "high"):
+        provider = LLMProvider(
+            endpoint_url="http://localhost:11434/v1",
+            model="test",
+            reasoning_effort=level,
+        )
+        body = _capture_generate_payload(provider)
+        assert body["reasoning_effort"] == level
+    print("  LLMProvider reasoning_effort injects all levels OK")
 
 
 # =========================================================================== #

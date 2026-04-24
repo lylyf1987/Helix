@@ -641,6 +641,78 @@ def test_cli_parser_requires_session_id():
         print("  CLI parser requires session id OK")
 
 
+def test_cli_parser_think_flag():
+    """Verify --think accepts enable/disable and defaults to None."""
+    parser = build_parser()
+    base = [
+        "--endpoint-url", "http://localhost:11434/v1",
+        "--model", "test",
+        "--workspace", ".",
+        "--session-id", "s1",
+    ]
+    # Default: no --think
+    args = parser.parse_args(base)
+    assert args.think is None
+    # --think enable
+    args = parser.parse_args(base + ["--think", "enable"])
+    assert args.think == "enable"
+    # --think disable
+    args = parser.parse_args(base + ["--think", "disable"])
+    assert args.think == "disable"
+    print("  CLI --think flag OK")
+
+
+def test_cli_parser_think_rejects_invalid():
+    """Verify --think rejects values other than enable/disable."""
+    parser = build_parser()
+    base = [
+        "--endpoint-url", "http://localhost:11434/v1",
+        "--model", "test",
+        "--workspace", ".",
+        "--session-id", "s1",
+        "--think", "maybe",
+    ]
+    try:
+        parser.parse_args(base)
+        assert False, "Expected invalid --think value to raise"
+    except SystemExit:
+        print("  CLI --think rejects invalid OK")
+
+
+def test_cli_parser_effort_flag():
+    """Verify --effort accepts the four common levels and defaults to None."""
+    parser = build_parser()
+    base = [
+        "--endpoint-url", "http://localhost:11434/v1",
+        "--model", "test",
+        "--workspace", ".",
+        "--session-id", "s1",
+    ]
+    args = parser.parse_args(base)
+    assert args.effort is None
+    for level in ("minimal", "low", "medium", "high"):
+        args = parser.parse_args(base + ["--effort", level])
+        assert args.effort == level
+    print("  CLI --effort flag OK")
+
+
+def test_cli_parser_effort_rejects_invalid():
+    """Verify --effort rejects unsupported values."""
+    parser = build_parser()
+    base = [
+        "--endpoint-url", "http://localhost:11434/v1",
+        "--model", "test",
+        "--workspace", ".",
+        "--session-id", "s1",
+        "--effort", "maximum",
+    ]
+    try:
+        parser.parse_args(base)
+        assert False, "Expected invalid --effort value to raise"
+    except SystemExit:
+        print("  CLI --effort rejects invalid OK")
+
+
 def test_host_invalid_session_id():
     """Verify RuntimeHost rejects unsafe session identifiers."""
     with tempfile.TemporaryDirectory() as td:
@@ -649,6 +721,30 @@ def test_host_invalid_session_id():
             assert False, "Expected invalid session_id to raise"
         except ValueError:
             print("  Invalid session id rejected OK")
+
+
+def test_host_think_forwarded_to_provider():
+    """Verify RuntimeHost forwards `think` to its LLMProvider."""
+    with tempfile.TemporaryDirectory() as td:
+        host_default = _make_host(Path(td) / "a")
+        assert host_default._model.think is None
+        host_on = _make_host(Path(td) / "b", think=True)
+        assert host_on._model.think is True
+        host_off = _make_host(Path(td) / "c", think=False)
+        assert host_off._model.think is False
+    print("  RuntimeHost threads think to LLMProvider OK")
+
+
+def test_host_effort_forwarded_to_provider():
+    """Verify RuntimeHost forwards `reasoning_effort` to its LLMProvider."""
+    with tempfile.TemporaryDirectory() as td:
+        host_default = _make_host(Path(td) / "a")
+        assert host_default._model.reasoning_effort is None
+        host_low = _make_host(Path(td) / "b", reasoning_effort="low")
+        assert host_low._model.reasoning_effort == "low"
+        host_high = _make_host(Path(td) / "c", reasoning_effort="high")
+        assert host_high._model.reasoning_effort == "high"
+    print("  RuntimeHost threads reasoning_effort to LLMProvider OK")
 
 
 # =========================================================================== #

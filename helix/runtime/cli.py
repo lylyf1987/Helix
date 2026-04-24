@@ -174,6 +174,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mode", default="controlled", choices=["auto", "controlled"], help="Execution mode")
     parser.add_argument("--workspace", required=True, help="Runtime workspace path")
     parser.add_argument("--session-id", required=True, help="Session identifier")
+    parser.add_argument(
+        "--think",
+        choices=["enable", "disable"],
+        default=None,
+        help="Enable/disable thinking mode (if supported by the model/server). Default: unset.",
+    )
+    parser.add_argument(
+        "--effort",
+        choices=["minimal", "low", "medium", "high"],
+        default=None,
+        help="Reasoning effort level (OpenAI/DeepSeek/Gemini). Default: unset (server default).",
+    )
     return parser
 
 
@@ -200,6 +212,11 @@ def main(argv: list[str] = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     workspace = Path(args.workspace).expanduser().resolve()
+    think: bool | None = None
+    if args.think == "enable":
+        think = True
+    elif args.think == "disable":
+        think = False
     host = RuntimeHost(
         workspace=workspace,
         session_id=args.session_id,
@@ -207,6 +224,8 @@ def main(argv: list[str] = None) -> int:
         model=args.model,
         api_key=args.api_key,
         mode=args.mode,
+        think=think,
+        reasoning_effort=args.effort,
     )
     return host.start()
 

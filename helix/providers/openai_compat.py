@@ -45,12 +45,16 @@ class LLMProvider:
         api_key: str = "",
         timeout: int = 300,
         temperature: float = 0.2,
+        think: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url.rstrip("/")
         self.model = model
         self.api_key = api_key
         self.timeout = timeout
         self.temperature = temperature
+        self.think = think
+        self.reasoning_effort = reasoning_effort
 
     def generate(
         self,
@@ -65,6 +69,21 @@ class LLMProvider:
             "stream": True,
             "temperature": self.temperature,
         }
+        if self.think is not None:
+            # Inject every widely-used thinking-mode field so a single flag
+            # works across OpenAI-compatible servers. Unknown fields are
+            # ignored by liberal servers:
+            #   - DeepSeek / Z.ai (GLM) / Anthropic-style: thinking.type
+            #   - Ollama:                                  think
+            #   - vLLM / SGLang (Qwen3-family):            chat_template_kwargs.enable_thinking
+            payload["thinking"] = {"type": "enabled" if self.think else "disabled"}
+            payload["think"] = self.think
+            payload["chat_template_kwargs"] = {"enable_thinking": self.think}
+        if self.reasoning_effort is not None:
+            # `reasoning_effort` is the de-facto OpenAI-compat standard,
+            # accepted by OpenAI (GPT-5/o-series), DeepSeek, and Gemini.
+            # Providers that don't recognize it ignore it.
+            payload["reasoning_effort"] = self.reasoning_effort
         headers: dict[str, str] = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

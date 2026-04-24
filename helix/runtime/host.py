@@ -56,6 +56,11 @@ class RuntimeHost:
         model: Model name.
         api_key: LLM API key (empty for unauthenticated endpoints).
         mode: Execution mode ("auto" or "controlled").
+        think: Thinking-mode toggle for the LLM provider. ``True`` enables,
+            ``False`` disables, ``None`` leaves it unset (server default).
+        reasoning_effort: Reasoning effort level forwarded to the provider
+            (e.g. ``"minimal"``, ``"low"``, ``"medium"``, ``"high"``).
+            ``None`` leaves it unset (server default).
     """
 
     _SESSION_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
@@ -98,6 +103,8 @@ class RuntimeHost:
         model: str,
         api_key: str = "",
         mode: str = "controlled",
+        think: bool | None = None,
+        reasoning_effort: str | None = None,
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
@@ -123,7 +130,13 @@ class RuntimeHost:
         self._bootstrap_skills()
 
         # 2. LLM provider
-        self._model = LLMProvider(endpoint_url=endpoint_url, model=model, api_key=api_key)
+        self._model = LLMProvider(
+            endpoint_url=endpoint_url,
+            model=model,
+            api_key=api_key,
+            think=think,
+            reasoning_effort=reasoning_effort,
+        )
 
         # 3. Agent
         self._agent = Agent(
