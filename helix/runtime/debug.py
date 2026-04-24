@@ -194,6 +194,13 @@ def render_session_view_html(
             body_text=prompt_text,
         )
 
+    if field == "workflow_summary":
+        summary_text = str(value) if str(value) else "(empty)"
+        return _render_text_view(
+            eyebrow="Agentic System Workflow Summary View",
+            body_text=summary_text,
+        )
+
     if field in {"full_history", "observation"}:
         turns = value if isinstance(value, list) else []
         blocks: list[str] = []

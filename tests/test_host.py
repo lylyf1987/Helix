@@ -317,7 +317,7 @@ def test_host_command_observation():
 
 
 def test_host_command_workflow_summary():
-    """Verify /workflow_summary opens a session-scoped HTML view."""
+    """Verify /view workflow_summary renders the summary as plain text, not JSON-wrapped."""
     with tempfile.TemporaryDirectory() as td:
         host = _make_host(Path(td), session_id="debug-01")
         host._env.workflow_summary = "## Current Status\nWorking"
@@ -327,7 +327,11 @@ def test_host_command_workflow_summary():
         assert result == f"Opened session view: {path.resolve()}"
         text = path.read_text(encoding="utf-8")
         assert "workflow_summary" in text
-        assert '## Current Status' in text
+        # Summary content is rendered directly with real newlines (not JSON-escaped)
+        assert "## Current Status\nWorking" in text
+        # No JSON wrapper artifacts
+        assert '"source_session_file"' not in text
+        assert '"generated_at"' not in text
         print("  /workflow_summary command OK")
 
 
