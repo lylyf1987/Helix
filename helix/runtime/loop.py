@@ -78,6 +78,11 @@ def run_loop(
         The agent's final response text.
     """
     consecutive_parse_failures = 0
+    # Holds the single runtime Turn that represents the current parse-retry
+    # cycle. On each new distinct error the Turn's content is overwritten
+    # in place so observation always reflects the *latest* failure instead
+    # of the first one. Cleared on any successful parse below.
+    parse_error_turn: Turn | None = None
 
     for _ in range(max_turns):
         # 1. Build state from environment (retries compaction internally)
@@ -103,6 +108,7 @@ def run_loop(
                 output=output,
             )
             consecutive_parse_failures = 0
+            parse_error_turn = None
         except LLMTransientError as exc:
             msg = (
                 f"LLM provider error after {DEFAULT_LLM_RETRIES} attempts: {exc}. "
@@ -120,12 +126,20 @@ def run_loop(
                 f"runtime> Output parse error (attempt "
                 f"{consecutive_parse_failures}/{DEFAULT_PARSE_RETRIES}): {exc}\n",
             )
-            # Record only the first parse error to avoid flooding the observation window.
-            if consecutive_parse_failures == 1:
-                env.record(Turn(
-                    role="runtime",
-                    content=f"Output parse error: {exc}. Please respond with valid <output>...</output> JSON.",
-                ))
+            # Keep exactly one parse-error Turn in observation and mutate its
+            # content in place on each distinct retry — the agent sees the
+            # *latest* failure, not the first. Skip the mutation if the error
+            # didn't change (same message twice in a row), so we don't
+            # rewrite identical content.
+            new_parse_error_content = (
+                f"Output parse error: {exc}. "
+                "Please respond with valid <output>...</output> JSON."
+            )
+            if parse_error_turn is None:
+                parse_error_turn = Turn(role="runtime", content=new_parse_error_content)
+                env.record(parse_error_turn)
+            elif parse_error_turn.content != new_parse_error_content:
+                parse_error_turn.content = new_parse_error_content
             if consecutive_parse_failures >= DEFAULT_PARSE_RETRIES:
                 msg = (
                     f"Loop ended: {DEFAULT_PARSE_RETRIES} consecutive parse failures. "

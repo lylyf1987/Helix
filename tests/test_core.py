@@ -476,6 +476,61 @@ def test_run_loop_parse_retry():
         print("  run_loop (parse retry) OK")
 
 
+def test_run_loop_parse_retry_observation_reflects_latest_error():
+    """Exactly one parse-error runtime Turn lives in observation across a
+    multi-retry cycle; its content is overwritten in place so it reflects
+    the *latest* failure, not the first."""
+    call_count = [0]
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return "bad output no tags"                          # missing <output> tags
+            if call_count[0] == 2:
+                return "<output>not-valid-json</output>"              # invalid JSON
+            if call_count[0] == 3:
+                return (
+                    '<output>{"response": "x", '
+                    '"next_action": "banana", "action_input": {}}</output>'
+                )                                                     # invalid next_action
+            return (
+                '<output>{"response": "Finally fixed.", '
+                '"next_action": "chat", "action_input": {}}</output>'
+            )
+
+    with tempfile.TemporaryDirectory() as td:
+        env = Environment(workspace=Path(td))
+        env.record(Turn(role="user", content="test"))
+        agent = Agent(MockModel(), workspace=Path(td))
+        result = run_loop(agent, env, output=sys.stderr)
+
+        assert result == "Finally fixed."
+        assert call_count[0] == 4
+
+        # Exactly one parse-error runtime Turn, in both history views.
+        full_parse_turns = [
+            t for t in env.full_history
+            if t.role == "runtime" and "Output parse error:" in t.content
+        ]
+        obs_parse_turns = [
+            t for t in env.observation
+            if t.role == "runtime" and "Output parse error:" in t.content
+        ]
+        assert len(full_parse_turns) == 1, (
+            f"expected exactly one recorded parse-error turn, got {len(full_parse_turns)}"
+        )
+        assert len(obs_parse_turns) == 1
+
+        # Content reflects the last failure (invalid next_action 'banana'),
+        # not the first (missing tags) or the second (invalid JSON).
+        final_turn = full_parse_turns[0]
+        assert "banana" in final_turn.content
+        assert "Missing <output>" not in final_turn.content
+        assert "Invalid JSON" not in final_turn.content
+        print("  run_loop (parse retry records latest error) OK")
+
+
 def test_run_loop_max_retries():
     """Test that run_loop stops after DEFAULT_PARSE_RETRIES consecutive failures.
 
@@ -722,6 +777,7 @@ if __name__ == "__main__":
     test_run_loop_chat()
     test_run_loop_think_then_chat()
     test_run_loop_parse_retry()
+    test_run_loop_parse_retry_observation_reflects_latest_error()
     test_run_loop_max_retries()
     test_run_loop_exec_denied_agent_reacts()
     test_run_loop_exec_cancelled_returns_control()
