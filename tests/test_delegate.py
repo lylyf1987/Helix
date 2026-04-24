@@ -34,7 +34,7 @@ class CoreAgentModel:
     def __init__(self):
         self.call_count = 0
 
-    def generate(self, messages, *, chunk_callback=None):
+    def generate(self, messages, *, chunk_callback=None, **_kwargs):
         self.call_count += 1
         if self.call_count == 1:
             # First turn: delegate
@@ -64,7 +64,7 @@ class SubAgentModel:
     def __init__(self):
         self.call_count = 0
 
-    def generate(self, messages, *, chunk_callback=None):
+    def generate(self, messages, *, chunk_callback=None, **_kwargs):
         self.call_count += 1
         return (
             '<output>'
@@ -84,7 +84,7 @@ class SharedModel:
     def __init__(self):
         self.calls = []
 
-    def generate(self, messages, *, chunk_callback=None):
+    def generate(self, messages, *, chunk_callback=None, **_kwargs):
         full_text = " ".join(m.get("content", "") for m in messages)
         self.calls.append(full_text[:100])  # track calls
         system_msg = messages[0].get("content", "") if messages else ""
@@ -281,7 +281,7 @@ def test_delegate_persists_and_restores_state():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             return (
                 '<output>'
@@ -326,7 +326,7 @@ def test_delegate_new_role_starts_fresh():
     """Delegation to a new role starts with empty history."""
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
@@ -351,7 +351,7 @@ def test_delegate_meta_registry_updated():
     """Meta registry is created and updated on delegation."""
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
@@ -381,7 +381,7 @@ def test_delegate_role_description_updates_meta():
     """Re-delegating with a new description updates the meta."""
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
@@ -421,7 +421,7 @@ def test_sub_agent_sigint_propagates_past_delegate():
             self.sub_calls = 0
             self.core_second_call = False
 
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             sysmsg = messages[0].get("content", "") if messages else ""
             if "You are a Sub-Agent" in sysmsg:
                 self.sub_calls += 1
@@ -498,7 +498,7 @@ def test_delegate_without_state_root_still_works():
     """Delegation works without state_root (no persistence)."""
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:

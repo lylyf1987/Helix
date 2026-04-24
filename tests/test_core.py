@@ -191,7 +191,7 @@ def test_environment_build_state():
 
 def test_environment_compaction():
     class CompactorModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return "## Session Goal\nTest session\n## Current Status\nCompacted."
 
     with tempfile.TemporaryDirectory() as td:
@@ -310,12 +310,12 @@ def test_run_loop_compaction_failure_records_runtime_turn():
         def __init__(self) -> None:
             self.calls = 0
 
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             self.calls += 1
             raise RemoteDisconnected("compactor closed connection")
 
     class UnusedAgentModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             assert False, "Agent model should not be called when compaction fails"
 
     # Collapse the outer compaction retry to a single attempt so the test
@@ -352,11 +352,11 @@ def test_run_loop_notifies_on_compaction_start():
     """When compaction is about to run, the user sees a 'Context window full' notice."""
 
     class SuccessfulCompactorModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return "## Session Goal\nTest\n## Current Status\nCompacted."
 
     class ChatAgentModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return '<output>{"response": "done", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
@@ -379,11 +379,11 @@ def test_run_loop_compaction_notification_fires_once_per_turn():
     """The 'Context window full' notice appears once per turn, not once per retry."""
 
     class FailingCompactorModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             raise RemoteDisconnected("compactor closed connection")
 
     class UnusedAgentModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             assert False, "Agent model should not be called when compaction fails"
 
     from helix.runtime import loop as loop_module
@@ -419,7 +419,7 @@ def test_run_loop_chat():
     """Test that run_loop correctly handles a mock agent returning chat."""
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return '<output>{"response": "Hello user!", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
@@ -432,12 +432,50 @@ def test_run_loop_chat():
         print("  run_loop (chat) OK")
 
 
+def test_run_loop_reasoning_tokens_never_enter_history():
+    """Reasoning-stream tokens go to the callback only — history stays clean."""
+
+    class ReasoningModel:
+        def generate(self, messages, *, chunk_callback=None, reasoning_callback=None, **_kwargs):
+            if reasoning_callback is not None:
+                reasoning_callback("INTERNAL_THOUGHTS_SHOULD_NEVER_LEAK ")
+                reasoning_callback("AND_NEITHER_SHOULD_THIS")
+            final = '<output>{"response": "Clean answer", "next_action": "chat", "action_input": {}}</output>'
+            if chunk_callback is not None:
+                chunk_callback(final)
+            return final
+
+    reasoning_seen: list[str] = []
+
+    with tempfile.TemporaryDirectory() as td:
+        env = Environment(workspace=Path(td))
+        env.record(Turn(role="user", content="hi"))
+        agent = Agent(ReasoningModel(), workspace=Path(td))
+        result = run_loop(
+            agent, env,
+            output=sys.stderr,
+            on_reasoning_chunk=reasoning_seen.append,
+        )
+
+    # Reasoning reached the callback
+    assert reasoning_seen == [
+        "INTERNAL_THOUGHTS_SHOULD_NEVER_LEAK ",
+        "AND_NEITHER_SHOULD_THIS",
+    ]
+    # But nothing reasoning-related is in the returned answer or any history turn
+    assert result == "Clean answer"
+    for turn in env.full_history:
+        assert "INTERNAL_THOUGHTS" not in turn.content
+        assert "NEITHER_SHOULD_THIS" not in turn.content
+    print("  run_loop reasoning stays out of history OK")
+
+
 def test_run_loop_think_then_chat():
     """Test that run_loop handles think -> chat sequence."""
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return '<output>{"response": "Let me think...", "next_action": "think", "action_input": {}}</output>'
@@ -460,7 +498,7 @@ def test_run_loop_parse_retry():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return "bad output no tags"
@@ -483,7 +521,7 @@ def test_run_loop_parse_retry_observation_reflects_latest_error():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return "bad output no tags"                          # missing <output> tags
@@ -539,7 +577,7 @@ def test_run_loop_max_retries():
     """
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return "always bad"
 
     from helix.runtime import loop as loop_module
@@ -563,7 +601,7 @@ def test_run_loop_exec_denied_agent_reacts():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return (
@@ -604,7 +642,7 @@ def test_run_loop_exec_cancelled_returns_control():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 return (
@@ -656,7 +694,7 @@ def test_run_loop_transient_error_retries_then_succeeds():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 raise LLMTransientError("LLM HTTP 503: overloaded", status_code=503)
@@ -695,7 +733,7 @@ def test_run_loop_transient_error_exhausts_retries():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             raise LLMTransientError("LLM HTTP 429: rate limited", status_code=429)
 
@@ -722,7 +760,7 @@ def test_run_loop_permanent_error_no_retry():
     call_count = [0]
 
     class MockModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             raise LLMPermanentError("LLM HTTP 401: unauthorized", status_code=401)
 

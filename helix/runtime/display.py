@@ -33,6 +33,10 @@ _EXEC_PAYLOAD_ORDER = (
 # ANSI styles
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
+_DIM = "\033[2m"
+
+# Prefix shown before the first reasoning-stream token.
+_THINKING_PREFIX = "thinking> "
 
 # Role prefix badges: bold + colored background + white text
 _BADGE = {
@@ -192,33 +196,67 @@ class StreamingDisplay:
         self._accumulated = ""
         self._response_text = ""
         self._current_name = "agent"
+        self._reasoning_active = False
 
-    def __call__(self, token: str) -> None:
-        """Called per token during model.generate()."""
+    @property
+    def _stream(self) -> TextIO:
+        return self._output if self._output is not None else sys.stdout
+
+    def on_content(self, token: str) -> None:
+        """Called per content token during model.generate()."""
+        self._close_reasoning()
         self._accumulated += token
         response = extract_streaming_response(self._accumulated)
         if response is None:
             return
         self._response_text = response
 
+    def on_reasoning(self, token: str) -> None:
+        """Called per reasoning_content token — stream live in dim/grey.
+
+        Reasoning tokens are written to stdout immediately so the user sees
+        the model thinking. They are NOT buffered into the response text and
+        therefore never reach the parsed action or the recorded history.
+        """
+        stream = self._stream
+        if not self._reasoning_active:
+            stream.write(f"\n{_DIM}{_THINKING_PREFIX}")
+            self._reasoning_active = True
+        stream.write(token)
+        stream.flush()
+
     def reset(self, name: str = "agent") -> None:
         """Reset state for a new turn."""
+        self._close_reasoning()
         self._accumulated = ""
         self._response_text = ""
         self._current_name = name
 
     def commit(self) -> None:
         """Print the buffered response as agent output."""
+        self._close_reasoning()
         if not self._response_text:
             return
-        output = self._output if self._output is not None else sys.stdout
         write_agent(
             f"{self._current_name}> {self._response_text}",
-            output,
+            self._stream,
             role=self._current_name,
         )
 
     def discard(self) -> None:
         """Drop any buffered response from a failed parse attempt."""
+        self._close_reasoning()
         self._accumulated = ""
         self._response_text = ""
+
+    def _close_reasoning(self) -> None:
+        """End the dim reasoning zone cleanly so later output isn't styled.
+
+        No-op if no reasoning zone is open — callers don't need to guard.
+        """
+        if not self._reasoning_active:
+            return
+        stream = self._stream
+        stream.write(f"{_RESET}\n")
+        stream.flush()
+        self._reasoning_active = False

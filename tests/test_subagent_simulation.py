@@ -44,7 +44,7 @@ class InstrumentedCoreModel:
         self.call_count = 0
         self.messages_received: list[list[dict]] = []
 
-    def generate(self, messages, *, chunk_callback=None):
+    def generate(self, messages, *, chunk_callback=None, **_kwargs):
         self.call_count += 1
         self.messages_received.append(messages)
 
@@ -95,7 +95,7 @@ class InstrumentedSubModel:
         self.call_count = 0
         self.messages_received: list[list[dict]] = []
 
-    def generate(self, messages, *, chunk_callback=None):
+    def generate(self, messages, *, chunk_callback=None, **_kwargs):
         self.call_count += 1
         self.messages_received.append(messages)
 
@@ -134,7 +134,7 @@ class SharedInstrumentedModel:
     def __init__(self):
         self.all_calls: list[dict] = []
 
-    def generate(self, messages, *, chunk_callback=None):
+    def generate(self, messages, *, chunk_callback=None, **_kwargs):
         call_num = len(self.all_calls) + 1
         full_text = " ".join(m.get("content", "") for m in messages)
         is_sub = "sub-agent" in full_text.lower()

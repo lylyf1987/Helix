@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from helix.runtime.host import RuntimeHost
 from helix.providers.openai_compat import LLMProvider
-from helix.runtime.display import extract_streaming_response
+from helix.runtime.display import StreamingDisplay, extract_streaming_response
 from helix.runtime.cli import build_parser, main as cli_main
 from helix.core.environment import Environment
 from helix.core.state import Turn
@@ -408,7 +408,7 @@ def test_host_process_message():
         host = _make_host(Path(td))
 
         # Mock the model to return a simple chat response
-        def mock_generate(messages, *, chunk_callback=None):
+        def mock_generate(messages, *, chunk_callback=None, **_kwargs):
             if chunk_callback is not None:
                 for piece in ('<output>{"response": "Hello ', 'from the agent!", '):
                     chunk_callback(piece)
@@ -494,7 +494,7 @@ def test_host_process_exec():
         )
 
         call_count = [0]
-        def mock_generate(messages, *, chunk_callback=None):
+        def mock_generate(messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 if chunk_callback is not None:
@@ -565,7 +565,7 @@ def test_host_process_message_discards_parse_failed_preview():
 
         call_count = [0]
 
-        def mock_generate(messages, *, chunk_callback=None):
+        def mock_generate(messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
                 bad = (
@@ -781,6 +781,85 @@ def test_streaming_extractor_not_yet():
     result = extract_streaming_response('{"next_action": ')
     assert result is None
     print("  Streaming extractor (not yet) OK")
+
+
+# =========================================================================== #
+# Reasoning stream rendering tests
+# =========================================================================== #
+
+
+def test_streaming_display_on_reasoning_emits_dim_prefix():
+    """First reasoning token emits the dim prefix; later tokens just append raw."""
+    buf = StringIO()
+    display = StreamingDisplay(output=buf)
+    display.reset("core_agent")
+    display.on_reasoning("abc")
+    display.on_reasoning("def")
+    written = buf.getvalue()
+    assert written.startswith("\n\033[2mthinking> abc")
+    assert written.endswith("def")
+    assert "\033[0m" not in written  # not closed yet
+    print("  StreamingDisplay on_reasoning dim prefix OK")
+
+
+def test_streaming_display_content_after_reasoning_closes_dim():
+    """When content tokens arrive after reasoning, the dim zone closes cleanly first."""
+    buf = StringIO()
+    display = StreamingDisplay(output=buf)
+    display.reset("core_agent")
+    display.on_reasoning("hmm")
+    display.on_content('{"response": "XYZ_FINAL"}')
+    written = buf.getvalue()
+    assert "\033[2mthinking> hmm" in written
+    assert "\033[0m\n" in written
+    # content is buffered, not yet printed
+    assert "XYZ_FINAL" not in written
+    print("  StreamingDisplay closes dim on content arrival OK")
+
+
+def test_streaming_display_commit_closes_dim_if_active():
+    """commit() closes an open reasoning zone before rendering the badge block."""
+    buf = StringIO()
+    display = StreamingDisplay(output=buf)
+    display.reset("core_agent")
+    display.on_reasoning("thinking text")
+    display.on_content('{"response": "final answer"}')
+    display.commit()
+    written = buf.getvalue()
+    assert "\033[2mthinking> thinking text" in written
+    assert "\033[0m\n" in written
+    # Badge block is present with the final answer
+    assert "core_agent" in written
+    assert "final answer" in written
+    # Dim close appears before the badge
+    assert written.index("\033[0m\n") < written.index("final answer")
+    print("  StreamingDisplay commit closes dim before badge OK")
+
+
+def test_streaming_display_discard_closes_dim_if_active():
+    """discard() also closes an open reasoning zone so the terminal state is clean."""
+    buf = StringIO()
+    display = StreamingDisplay(output=buf)
+    display.reset("core_agent")
+    display.on_reasoning("partial thought")
+    display.discard()
+    written = buf.getvalue()
+    assert "\033[2mthinking> partial thought" in written
+    assert "\033[0m\n" in written
+    print("  StreamingDisplay discard closes dim OK")
+
+
+def test_streaming_display_reset_closes_dim_if_active():
+    """A new turn via reset() closes any dangling dim zone from the previous turn."""
+    buf = StringIO()
+    display = StreamingDisplay(output=buf)
+    display.reset("core_agent")
+    display.on_reasoning("leftover")
+    display.reset("core_agent")  # new turn
+    written = buf.getvalue()
+    assert "\033[2mthinking> leftover" in written
+    assert "\033[0m\n" in written
+    print("  StreamingDisplay reset closes dim OK")
 
 
 # =========================================================================== #

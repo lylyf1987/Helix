@@ -216,7 +216,7 @@ def test_full_pipeline_with_skill_exec():
         call_count = [0]
 
         class SkillAwareModel:
-            def generate(self, messages, *, chunk_callback=None):
+            def generate(self, messages, *, chunk_callback=None, **_kwargs):
                 call_count[0] += 1
                 if call_count[0] == 1:
                     return (

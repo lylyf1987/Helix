@@ -245,6 +245,62 @@ def test_llm_provider_effort_injects_field():
     print("  LLMProvider reasoning_effort injects all levels OK")
 
 
+def _stream_response(chunks: list[dict]) -> _MockStreamResponse:
+    """Build a mock SSE response body from a list of delta payloads."""
+    lines: list[bytes] = []
+    for delta in chunks:
+        obj = {"choices": [{"delta": delta}]}
+        lines.append(f"data: {json.dumps(obj)}\n".encode("utf-8"))
+    lines.append(b"data: [DONE]\n")
+    return _MockStreamResponse(lines)
+
+
+def test_llm_provider_forwards_reasoning_to_callback():
+    """Verify reasoning_content chunks go to reasoning_callback and are NOT in the return value."""
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
+    reasoning_chunks: list[str] = []
+    content_chunks: list[str] = []
+
+    def fake_urlopen(req, timeout=None):
+        return _stream_response([
+            {"reasoning_content": "Let me think"},
+            {"reasoning_content": " about this..."},
+            {"content": "Final"},
+            {"content": " answer"},
+        ])
+
+    with patch("helix.providers.openai_compat.urlopen", side_effect=fake_urlopen):
+        result = provider.generate(
+            [{"role": "user", "content": "hi"}],
+            chunk_callback=content_chunks.append,
+            reasoning_callback=reasoning_chunks.append,
+        )
+
+    assert reasoning_chunks == ["Let me think", " about this..."]
+    assert content_chunks == ["Final", " answer"]
+    assert result == "Final answer"
+    assert "think" not in result
+    print("  LLMProvider forwards reasoning_content to reasoning_callback OK")
+
+
+def test_llm_provider_no_reasoning_callback_discards_silently():
+    """Verify omitting reasoning_callback doesn't error; reasoning is simply dropped."""
+    provider = LLMProvider(endpoint_url="http://localhost:11434/v1", model="test")
+
+    def fake_urlopen(req, timeout=None):
+        return _stream_response([
+            {"reasoning_content": "hidden thought"},
+            {"content": "visible"},
+        ])
+
+    with patch("helix.providers.openai_compat.urlopen", side_effect=fake_urlopen):
+        result = provider.generate([{"role": "user", "content": "hi"}])
+
+    assert result == "visible"
+    assert "hidden" not in result
+    print("  LLMProvider without reasoning_callback drops reasoning cleanly OK")
+
+
 # =========================================================================== #
 # Skill loader tests
 # =========================================================================== #
@@ -355,7 +411,7 @@ def test_agent_rebuilds_prompt_from_updated_workspace_skills():
     """Workspace-backed agents should pick up skill metadata changes without restart."""
 
     class _DummyModel:
-        def generate(self, messages, *, chunk_callback=None):
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return ""
 
     with tempfile.TemporaryDirectory() as td:

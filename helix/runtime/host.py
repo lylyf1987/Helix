@@ -349,7 +349,8 @@ class RuntimeHost:
                 on_turn_start=display.reset,
                 on_turn_end=display.commit,
                 on_turn_error=display.discard,
-                on_token_chunk=display,
+                on_token_chunk=display.on_content,
+                on_reasoning_chunk=display.on_reasoning,
             )
         except UserInterrupted:
             # Ctrl+C during exec bubbles up here. The interrupt Turn is

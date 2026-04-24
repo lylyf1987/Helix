@@ -61,8 +61,17 @@ class LLMProvider:
         messages: list[dict[str, str]],
         *,
         chunk_callback: Optional[Callable[[str], None]] = None,
+        reasoning_callback: Optional[Callable[[str], None]] = None,
     ) -> str:
-        """Generate text via streaming SSE chat completions."""
+        """Generate text via streaming SSE chat completions.
+
+        ``chunk_callback`` receives ``delta.content`` pieces — the final
+        answer text, also accumulated into the return value.
+        ``reasoning_callback`` receives ``delta.reasoning_content`` pieces —
+        live thinking tokens emitted by reasoning-capable models (Z.ai,
+        DeepSeek-reasoner, OpenAI o-series). Reasoning pieces are NOT
+        accumulated into the return value.
+        """
         payload: dict[str, Any] = {
             "model": self.model,
             "messages": messages,
@@ -109,6 +118,9 @@ class LLMProvider:
                         item = json.loads(raw)
                     except json.JSONDecodeError:
                         continue
+                    reasoning_piece = self._extract_reasoning_piece(item)
+                    if reasoning_piece and reasoning_callback is not None:
+                        reasoning_callback(reasoning_piece)
                     piece = self._extract_stream_piece(item)
                     if piece:
                         parts.append(piece)
@@ -133,7 +145,21 @@ class LLMProvider:
 
     @staticmethod
     def _extract_stream_piece(data: dict[str, Any]) -> str:
-        """Extract text from one streaming SSE chunk."""
+        """Extract content text from one streaming SSE chunk."""
+        return LLMProvider._extract_delta_field(data, "content")
+
+    @staticmethod
+    def _extract_reasoning_piece(data: dict[str, Any]) -> str:
+        """Extract reasoning text from one streaming SSE chunk.
+
+        Returns the ``delta.reasoning_content`` string when present — the
+        live thinking stream emitted by reasoning-capable models.
+        """
+        return LLMProvider._extract_delta_field(data, "reasoning_content")
+
+    @staticmethod
+    def _extract_delta_field(data: dict[str, Any], field: str) -> str:
+        """Pull a named string field out of ``choices[0].delta``."""
         choices = data.get("choices", [])
         if not isinstance(choices, list) or not choices:
             return ""
@@ -143,13 +169,13 @@ class LLMProvider:
         delta = first.get("delta")
         if not isinstance(delta, dict):
             return ""
-        content = delta.get("content")
-        if isinstance(content, str):
-            return content
-        if isinstance(content, list):
+        value = delta.get(field)
+        if isinstance(value, str):
+            return value
+        if isinstance(value, list):
             return "".join(
                 item.get("text", "")
-                for item in content
+                for item in value
                 if isinstance(item, dict) and isinstance(item.get("text"), str)
             )
         return ""

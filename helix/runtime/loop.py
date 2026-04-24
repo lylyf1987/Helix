@@ -39,6 +39,7 @@ def run_loop(
     on_turn_end: Callable[[], None] | None = None,
     on_turn_error: Callable[[], None] | None = None,
     on_token_chunk: Callable[[str], None] | None = None,
+    on_reasoning_chunk: Callable[[str], None] | None = None,
 ) -> str:
     """Universal agent loop.
 
@@ -73,6 +74,7 @@ def run_loop(
         on_turn_end: Optional callback fired after a valid agent output is finalized.
         on_turn_error: Optional callback fired after a parse-failed attempt.
         on_token_chunk: Optional callback for streaming agent responses.
+        on_reasoning_chunk: Optional callback for streaming reasoning tokens.
 
     Returns:
         The agent's final response text.
@@ -104,6 +106,7 @@ def run_loop(
             action = _act_with_retry(
                 agent, state,
                 chunk_callback=on_token_chunk,
+                reasoning_callback=on_reasoning_chunk,
                 on_turn_error=on_turn_error,
                 output=output,
             )
@@ -217,6 +220,7 @@ def run_loop(
                     on_turn_end=on_turn_end,
                     on_turn_error=on_turn_error,
                     on_token_chunk=on_token_chunk,
+                    on_reasoning_chunk=on_reasoning_chunk,
                 )
                 env.record(Turn(role="sub_agent", content=result))
             except UserInterrupted as exc:
@@ -282,6 +286,7 @@ def _delegate(
     on_turn_end: Callable[[], None] | None = None,
     on_turn_error: Callable[[], None] | None = None,
     on_token_chunk: Callable[[str], None] | None = None,
+    on_reasoning_chunk: Callable[[str], None] | None = None,
 ) -> str:
     """Spawn a sub-agent to handle a delegated task.
 
@@ -358,6 +363,7 @@ def _delegate(
             on_turn_end=on_turn_end,
             on_turn_error=on_turn_error,
             on_token_chunk=on_token_chunk,
+            on_reasoning_chunk=on_reasoning_chunk,
         )
     finally:
         # Always persist what the sub-agent saw, even on error, so /view
@@ -378,6 +384,7 @@ def _act_with_retry(
     state: State,
     *,
     chunk_callback: Callable[[str], None] | None,
+    reasoning_callback: Callable[[str], None] | None,
     on_turn_error: Callable[[], None] | None,
     output: TextIO,
 ) -> Action:
@@ -392,7 +399,11 @@ def _act_with_retry(
     last_exc: LLMTransientError | None = None
     for attempt in range(1, DEFAULT_LLM_RETRIES + 1):
         try:
-            return agent.act(state, chunk_callback=chunk_callback)
+            return agent.act(
+                state,
+                chunk_callback=chunk_callback,
+                reasoning_callback=reasoning_callback,
+            )
         except LLMTransientError as exc:
             last_exc = exc
             if on_turn_error:

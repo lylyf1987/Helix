@@ -233,8 +233,13 @@ class Agent:
         state: State,
         *,
         chunk_callback: Optional[Callable[[str], None]] = None,
+        reasoning_callback: Optional[Callable[[str], None]] = None,
     ) -> Action:
         """Given current state, produce the next Action.
+
+        ``reasoning_callback`` (if provided) receives live ``reasoning_content``
+        tokens from reasoning-capable models; these are streamed to the caller
+        for display only and do not affect the parsed action.
 
         Raises:
             ActionParseError: If the model output fails parsing/validation.
@@ -244,6 +249,7 @@ class Agent:
         raw_output = self.model.generate(
             messages,
             chunk_callback=chunk_callback,
+            reasoning_callback=reasoning_callback,
         )
         return parse_action(raw_output, allowed_actions=self.allowed_actions)
 
