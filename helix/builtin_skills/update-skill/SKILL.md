@@ -62,7 +62,6 @@ Read the updated file to confirm the changes are correct:
 # Rules
 
 - Always read the current skill before modifying it.
-- Never edit a file under `skills/builtin_skills/` directly — that tree is resynced from the package on every startup, so your edits will be erased. To customize a built-in skill, copy its directory up one level into `skills/{new-name}/` and edit the copy.
 - Keep the frontmatter format: only name and description fields.
 - Preserve the existing procedure structure unless the update requires restructuring.
 - If adding or modifying scripts, follow the script mode guidelines from the create-skill skill.

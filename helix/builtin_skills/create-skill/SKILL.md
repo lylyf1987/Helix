@@ -130,7 +130,6 @@ Only if the skill requires pre-built scripts:
 
 - Use lowercase kebab-case for skill directory names.
 - User-created skills go under `skills/`, not `skills/builtin_skills/`.
-- Never edit a file under `skills/builtin_skills/` directly — that tree is resynced from the package on every startup, so your edits will be erased. To customize a built-in skill, copy its directory up one level into `skills/{new-name}/` and edit the copy.
 - Frontmatter must have exactly `name` and `description` — nothing else.
 - Default to no-script skills. Only add scripts when step complexity justifies it.
 - Reference existing skills by name in the procedure instead of duplicating their logic.

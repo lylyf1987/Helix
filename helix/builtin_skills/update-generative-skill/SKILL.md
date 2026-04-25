@@ -77,7 +77,7 @@ Useful helpers from `helix.runtime.local_model_service.helpers`: `_request_input
 }
 ```
 
-(Adjust the path for skill location; for built-in skills copy to `skills/{new-name}/` first — never edit under `skills/builtin_skills/` in place.)
+(Adjust the path for skill location. Note: `{workspace}/skills/builtin_skills/` is resynced from the package on every startup, so edits there don't persist across restarts; edit the package source directly if you want persistence, or copy to `skills/{new-name}/` for a workspace-local fork.)
 
 ## Step 2: Make the edit
 
@@ -132,7 +132,6 @@ If smoke fails after an adapter edit, the most common causes are: forgot to rest
 # Rules
 
 - Always read the skill's existing state before editing.
-- Never edit a file under `skills/builtin_skills/` directly — that tree is resynced from the package on every startup. To customize a built-in generative skill, copy its directory into `skills/{new-name}/` and edit the copy.
 - Keep the frontmatter format: only `name` and `description`.
 - Consult the Change → Follow-up Matrix before reporting "done" — a correctly edited skill that wasn't followed by the right download/restart looks broken on the next call.
 - `host_adapter.py` must still subclass `_BaseBackend`, export `create_adapter(**kwargs)`, and return `_ok(...)` or `_error(...)` after every edit. Any other return shape is an interface violation.

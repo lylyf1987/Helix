@@ -349,7 +349,6 @@ Run `prepare_model.py` (should complete without error on subsequent calls — th
 
 - Use lowercase kebab-case for the skill directory name.
 - User-created generative skills go under `skills/`, not `skills/builtin_skills/`.
-- Never edit a file under `skills/builtin_skills/` directly — that tree is resynced from the package on every startup, so your edits will be erased. To customize a built-in skill, copy its directory up one level into `skills/{new-name}/` and edit the copy.
 - Frontmatter must have exactly `name` and `description` — nothing else.
 - `model_spec.json` must list every file needed in `download_manifest.required` — partial downloads are the most common deployment bug.
 - `host_adapter.py` must subclass `_BaseBackend`, export `create_adapter(**kwargs)`, and return `_ok(...)` or `_error(...)` from `handle()`. Any other return shape is an interface violation.
