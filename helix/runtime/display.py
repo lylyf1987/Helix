@@ -157,7 +157,7 @@ class StreamingDisplay:
 
     Accumulates raw LLM tokens and uses extract_streaming_response() to
     track the latest response text. The text is only printed if the turn
-    later passes parsing/validation. Raw JSON structure remains hidden.
+    later passes parsing/validation. Raw XML structure remains hidden.
     """
 
     def __init__(self, output: Optional[TextIO] = None) -> None:

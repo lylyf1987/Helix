@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Iterable, Mapping
+from typing import Any, Mapping
 
 from helix.core.state import Turn
 from helix.runtime.sandbox import HostSandboxExecutor
