@@ -58,12 +58,13 @@ def run_loop(
         so the agent sees it on the next turn and can adjust its output. After
         ``DEFAULT_PARSE_RETRIES`` consecutive failures the loop bails out
         (stuck-state detection, independent of ``max_turns``).
-      * ``UserInterrupted`` is *unwind-everything*: a Ctrl+C during exec
-        records the interrupt turn at every loop layer (sub-agent, delegate,
-        core) and re-raises, so control returns to the REPL in one hop.
-      * Approval denials are *data*: ``env.execute`` returns the denial Turn
-        like any other observation, the loop records it, and the agent
-        reacts on its next turn — no exception involved.
+      * ``UserInterrupted`` is *unwind-everything*: any user abort —
+        Ctrl+C during exec, Ctrl+C/EOF at the approval prompt, or denying
+        an action at the approval prompt — records the interrupt turn at
+        every loop layer (sub-agent, delegate, core) and re-raises, so
+        control returns to the REPL in one hop. The recorded Turn lands in
+        both ``full_history`` and ``observation``, so the next user prompt
+        sees the deny as context.
 
     Args:
         agent: The LLM-based agent.

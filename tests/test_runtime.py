@@ -165,6 +165,10 @@ def test_approval_policy_pattern_mode():
 
 
 def test_approval_policy_pattern_mode_rejects_script_path():
+    """'p' for a script_path execution must raise UserInterrupted (no caching)
+    so the outer run_loop unwinds to the REPL just like an explicit deny."""
+    from helix.core.environment import UserInterrupted
+
     prompts: list[str] = []
 
     def fake_prompt(_prompt: str) -> str:
@@ -174,7 +178,7 @@ def test_approval_policy_pattern_mode_rejects_script_path():
     policy = ApprovalPolicy(mode="controlled", prompt=fake_prompt)
     env = Environment(workspace=Path("."))
 
-    action1 = Action(
+    action = Action(
         response="",
         type="exec",
         payload={
@@ -183,36 +187,41 @@ def test_approval_policy_pattern_mode_rejects_script_path():
             "script_args": ["--value", "123"],
         },
     )
-    result1 = policy(env, action1)
-    assert isinstance(result1, Turn)
-    assert "denied by user" in result1.content.lower()
+
+    raised = False
+    try:
+        policy(env, action)
+    except UserInterrupted as exc:
+        raised = True
+        assert exc.observation.role == "runtime"
+        assert "denied by user" in exc.observation.content.lower()
+
+    assert raised, "'p' on a script_path must raise UserInterrupted, not return a Turn"
     assert not policy.approved_patterns
-
-    action2 = Action(
-        response="",
-        type="exec",
-        payload={
-            "code_type": "python",
-            "script_path": "skills/b.py",
-            "script_args": ["--value", "456"],
-        },
-    )
-    result2 = policy(env, action2)
-    assert isinstance(result2, Turn)
-    assert "denied by user" in result2.content.lower()
-    assert len(prompts) == 2
-
+    assert len(prompts) == 1
     print("  Approval pattern mode rejects script_path OK")
 
 
 def test_approval_policy_controlled_deny():
+    """Typing 'n' (or any non-approve choice) raises UserInterrupted so the
+    outer run_loop unwinds to the REPL — control returns to the user with
+    the deny recorded in full_history/observation as context."""
+    from helix.core.environment import UserInterrupted
+
     policy = ApprovalPolicy(mode="controlled", prompt=lambda _prompt: "n")
     env = Environment(workspace=Path("."))
 
     action = Action(response="", type="exec", payload={"code_type": "bash", "script": "rm -rf /"})
-    result = policy(env, action)
-    assert isinstance(result, Turn)
-    assert "denied by user" in result.content.lower()
+
+    raised = False
+    try:
+        policy(env, action)
+    except UserInterrupted as exc:
+        raised = True
+        assert exc.observation.role == "runtime"
+        assert "denied by user" in exc.observation.content.lower()
+
+    assert raised, "approval deny must raise UserInterrupted, not return a Turn"
     print("  Approval deny OK")
 
 
@@ -307,6 +316,10 @@ def test_approval_prompt_shows_timeout_seconds_and_job_name():
 
 
 def test_approval_policy_exact_match_includes_timeout_seconds():
+    """Different timeout_seconds must miss the exact-match cache and re-prompt;
+    a 'n' on the re-prompt raises UserInterrupted."""
+    from helix.core.environment import UserInterrupted
+
     prompts: list[str] = []
     choices = iter(["s", "n"])
 
@@ -339,9 +352,15 @@ def test_approval_policy_exact_match_includes_timeout_seconds():
             "timeout_seconds": 2400,
         },
     )
-    result = policy(env, action2)
-    assert isinstance(result, Turn)
-    assert "denied by user" in result.content.lower()
+
+    raised = False
+    try:
+        policy(env, action2)
+    except UserInterrupted as exc:
+        raised = True
+        assert "denied by user" in exc.observation.content.lower()
+
+    assert raised, "deny on cache-miss must raise UserInterrupted"
     assert len(prompts) == 2
     print("  Approval exact match includes timeout_seconds OK")
 

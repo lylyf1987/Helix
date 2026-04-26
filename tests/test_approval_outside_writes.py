@@ -103,10 +103,12 @@ def test_detect_read_only_commands_not_flagged():
 
 
 def test_prompt_shows_outside_write_warning():
+    from helix.core.environment import UserInterrupted
+
     captured_prompt: list[str] = []
 
     def capture(_prompt: str) -> str:
-        return "n"  # deny
+        return "n"  # deny — raises UserInterrupted under current semantics
 
     policy = ApprovalPolicy(mode="controlled", prompt=capture)
 
@@ -122,7 +124,10 @@ def test_prompt_shows_outside_write_warning():
                 type="exec",
                 payload={"code_type": "bash", "script": "rm -rf /etc/foo"},
             )
-            result = policy(env, action)
+            try:
+                policy(env, action)
+            except UserInterrupted:
+                pass  # expected — we only care about the prompt text below
 
         combined = "\n".join(captured_prompt)
         assert "outside the workspace" in combined.lower(), combined

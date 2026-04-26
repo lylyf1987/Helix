@@ -595,9 +595,13 @@ def test_run_loop_max_retries():
         loop_module.DEFAULT_PARSE_RETRIES = original_retries
 
 
-def test_run_loop_exec_denied_agent_reacts():
-    """Approval denial is recorded as an observation and the agent takes
-    another turn to react to it — rather than exiting the loop."""
+def test_run_loop_exec_denied_returns_control():
+    """Approval denial is a user abort: UserInterrupted unwinds run_loop back
+    to the REPL caller without the agent taking another turn. The denial Turn
+    still lands in full_history/observation so the next user prompt has it
+    as context."""
+    from helix.core.environment import UserInterrupted
+
     call_count = [0]
 
     class MockModel:
@@ -611,27 +615,38 @@ def test_run_loop_exec_denied_agent_reacts():
                     '"action_input": {"job_name": "check-status", "code_type": "bash", "script": "echo x"}}'
                     '</output>'
                 )
-            return (
-                '<output>'
-                '{"response": "Understood, I will not run that.", '
-                '"next_action": "chat", "action_input": {}}'
-                '</output>'
-            )
+            raise AssertionError("run_loop should have unwound before a second agent turn")
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), mode="controlled")
         env.on_before_execute(ApprovalPolicy(mode="controlled", prompt=lambda _prompt: "n"))
         env.record(Turn(role="user", content="check status"))
         agent = Agent(MockModel(), workspace=Path(td))
-        result = run_loop(agent, env, output=sys.stderr)
 
-        # Agent reacted on its second turn and chatted back.
-        assert "will not run" in result.lower()
-        assert call_count[0] == 2
-        # Denial was recorded as a plain observation, not an exception turn.
+        raised = False
+        try:
+            run_loop(agent, env, output=sys.stderr)
+        except UserInterrupted as exc:
+            raised = True
+            assert "denied by user" in exc.observation.content.lower()
+            assert "core_agent" in exc.observation.content
+            assert exc.observation.role == "runtime"
+
+        assert raised, "run_loop must raise UserInterrupted on approval deny"
+        assert call_count[0] == 1
+        # Denial lands in full_history (and observation) so the next user
+        # prompt sees it as context.
         runtime_turns = [t for t in env.full_history if t.role == "runtime"]
-        assert any("denied by user" in t.content.lower() for t in runtime_turns)
-        print("  run_loop (denial → agent reacts) OK")
+        assert any(
+            "core_agent" in t.content and "denied by user" in t.content.lower()
+            for t in runtime_turns
+        )
+        observation_turns = [t for t in env.observation if t.role == "runtime"]
+        assert any(
+            "core_agent" in t.content and "denied by user" in t.content.lower()
+            for t in observation_turns
+        )
+        print("  run_loop (deny → UserInterrupted → returns to user) OK")
 
 
 def test_run_loop_exec_cancelled_returns_control():
@@ -817,7 +832,7 @@ if __name__ == "__main__":
     test_run_loop_parse_retry()
     test_run_loop_parse_retry_observation_reflects_latest_error()
     test_run_loop_max_retries()
-    test_run_loop_exec_denied_agent_reacts()
+    test_run_loop_exec_denied_returns_control()
     test_run_loop_exec_cancelled_returns_control()
     test_run_loop_compaction_failure_records_runtime_turn()
     test_run_loop_notifies_on_compaction_start()

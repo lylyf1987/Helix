@@ -238,10 +238,10 @@ class ApprovalPolicy:
                     "runtime> 'p' requires an inline script. Use 's' or 'k' for script_path.",
                     None,
                 )
-                return Turn(
+                raise UserInterrupted(Turn(
                     role="runtime",
                     content="Execution denied by user during approval prompt.",
-                )
+                ))
             self.approved_patterns.add(pattern_key)
             return True
         if choice in {"k", "path", "skill"}:
@@ -250,12 +250,12 @@ class ApprovalPolicy:
                 return True
             else:
                 write_approval("runtime> 'k' requires a script_path. Denied.", None)
-                return Turn(
+                raise UserInterrupted(Turn(
                     role="runtime",
                     content="Execution denied by user during approval prompt.",
-                )
+                ))
 
-        return Turn(
+        raise UserInterrupted(Turn(
             role="runtime",
             content="Execution denied by user during approval prompt.",
-        )
+        ))
