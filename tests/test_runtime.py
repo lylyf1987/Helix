@@ -116,8 +116,8 @@ def test_sandbox_wraps_stderr_readably():
 
 
 def test_approval_policy_auto_mode():
-    policy = ApprovalPolicy()
-    env = Environment(workspace=Path("."), mode="auto")
+    policy = ApprovalPolicy(mode="auto")
+    env = Environment(workspace=Path("."))
 
     action = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo x"})
     assert policy(env, action) is True
@@ -226,7 +226,7 @@ def test_approval_policy_controlled_deny():
 
 
 def test_approval_policy_a_switches_to_auto_and_approves():
-    """The 'a' choice flips env.mode to auto AND approves the current exec.
+    """The 'a' choice flips policy.mode to auto AND approves the current exec.
     Subsequent execs short-circuit at the auto check without prompting."""
     prompts: list[str] = []
 
@@ -236,34 +236,18 @@ def test_approval_policy_a_switches_to_auto_and_approves():
 
     policy = ApprovalPolicy(prompt=fake_prompt)
     env = Environment(workspace=Path("."))
-    assert env.mode == "controlled"
+    assert policy.mode == "controlled"
 
     action = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo x"})
     assert policy(env, action) is True
-    assert env.mode == "auto"
+    assert policy.mode == "auto"
     assert len(prompts) == 1
 
-    # A second exec must skip the prompt entirely now that the env is in auto.
+    # A second exec must skip the prompt entirely now that the policy is in auto.
     action2 = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo y"})
     assert policy(env, action2) is True
     assert len(prompts) == 1, "auto mode must not re-prompt"
     print("  Approval 'a' switches to auto mode OK")
-
-
-def test_approval_policy_a_at_sub_env_propagates_to_root():
-    """When 'a' is chosen at an approval prompt deep in a delegate tree, the
-    mode flip must propagate to the root env so the core agent's subsequent
-    execs also skip the prompt."""
-    policy = ApprovalPolicy(prompt=lambda _prompt: "a")
-    root = Environment(workspace=Path("."))
-    sub = Environment(workspace=Path("."), parent=root)
-    assert root.mode == "controlled" and sub.mode == "controlled"
-
-    action = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo x"})
-    assert policy(sub, action) is True
-    assert root.mode == "auto"
-    assert sub.mode == "auto"
-    print("  Approval 'a' at sub-env propagates to root OK")
 
 
 def test_approval_policy_uses_injected_prompt_instead_of_raw_input():
@@ -442,8 +426,8 @@ def test_environment_integration():
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
         # Use our real executor and auto mode for hands-free test
-        env = Environment(workspace=workspace, mode="auto", executor=sandbox_executor)
-        policy = ApprovalPolicy()
+        env = Environment(workspace=workspace, executor=sandbox_executor)
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
 
         action = Action(response="Running script", type="exec", payload={
@@ -474,7 +458,6 @@ if __name__ == "__main__":
     test_approval_policy_pattern_mode_rejects_script_path()
     test_approval_policy_controlled_deny()
     test_approval_policy_a_switches_to_auto_and_approves()
-    test_approval_policy_a_at_sub_env_propagates_to_root()
     test_approval_policy_uses_injected_prompt_instead_of_raw_input()
     test_approval_policy_keyboard_interrupt_cancels()
     test_approval_prompt_prints_separator_before_input()

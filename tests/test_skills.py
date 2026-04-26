@@ -240,8 +240,8 @@ def test_full_pipeline_with_skill_exec():
                 )
 
         workspace = Path(td)
-        env = Environment(workspace=workspace, executor=sandbox_executor, mode="auto")
-        policy = ApprovalPolicy()
+        env = Environment(workspace=workspace, executor=sandbox_executor)
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
         env.record(Turn(role="user", content="Test the skills pipeline."))
 

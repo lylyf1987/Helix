@@ -106,10 +106,11 @@ def detect_outside_workspace_writes(payload: dict, workspace_root: Path) -> list
 class ApprovalPolicy:
     """Manages approval state for a single session.
 
-    Mode is read from the ``Environment`` passed to ``__call__``, so a single
-    policy instance serves the whole delegate tree and a runtime ``/mode``
-    switch (or ``a`` at an approval prompt) takes effect immediately at every
-    depth.
+    A single policy instance is shared across the whole delegate tree (every
+    sub-environment installs the same policy as its ``_on_before_execute``
+    hook), so mutating ``self.mode`` — via ``/mode <auto|controlled>`` at the
+    REPL or by picking ``a`` at an approval prompt — takes effect at every
+    depth instantly.
 
     Approval choices:
         y: allow once
@@ -121,9 +122,11 @@ class ApprovalPolicy:
 
     def __init__(
         self,
+        mode: str = "controlled",
         *,
         prompt: Optional[PromptFn] = None,
     ) -> None:
+        self.mode = mode
         self._prompt = prompt or input
         self.approved_exact: set[str] = set()
         self.approved_patterns: set[str] = set()
@@ -159,7 +162,7 @@ class ApprovalPolicy:
         if action.type != "exec":
             return True
 
-        if env.mode == "auto":
+        if self.mode == "auto":
             return True
 
         # Check cached approvals
@@ -234,7 +237,7 @@ class ApprovalPolicy:
             ))
 
         if choice in {"a", "auto"}:
-            env.mode = "auto"  # property setter walks to root env
+            self.mode = "auto"
             write_approval(
                 "runtime> Switched to auto mode for this session.",
                 None,

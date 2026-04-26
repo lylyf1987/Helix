@@ -104,9 +104,9 @@ def test_host_init():
     """Verify RuntimeHost initializes with correct configuration."""
     with tempfile.TemporaryDirectory() as td:
         host = _make_host(workspace=Path(td))
-        host._env.mode = "auto"
+        host._approval.mode = "auto"
         assert host._model.model == "llama3.1:8b"
-        assert host._env.mode == "auto"
+        assert host._approval.mode == "auto"
         assert host.workspace == Path(td).resolve()
         assert host.session_id == "session-01"
         assert host.session_root == (Path(td) / "sessions" / "session-01").resolve()
@@ -130,7 +130,7 @@ def test_host_init_controlled():
         )
         assert host._model.model == "deepseek-chat"
         assert "deepseek.com" in host._model.endpoint_url
-        assert host._env.mode == "controlled"
+        assert host._approval.mode == "controlled"
         print("  RuntimeHost init (controlled) OK")
 
 
@@ -153,7 +153,7 @@ def test_host_init_with_session_id_loads_existing_state():
             workspace=workspace,
             session_id="review-01",
         )
-        host._env.mode = "auto"
+        host._approval.mode = "auto"
 
         assert host.session_id == "review-01"
         assert host.session_state_path == session_path.resolve()
@@ -286,26 +286,26 @@ def test_host_command_mode():
         result = host._handle_command("/mode")
         assert "controlled" in result
         assert "auto" in result  # usage line lists choices
-        assert host._env.mode == "controlled"
+        assert host._approval.mode == "controlled"
 
         # Switching to auto.
         result = host._handle_command("/mode auto")
         assert "auto" in result.lower()
-        assert host._env.mode == "auto"
+        assert host._approval.mode == "auto"
 
         # Same-mode is a no-op with a friendly notice.
         result = host._handle_command("/mode auto")
         assert "already" in result.lower()
-        assert host._env.mode == "auto"
+        assert host._approval.mode == "auto"
 
         # Switching back.
         result = host._handle_command("/mode controlled")
-        assert host._env.mode == "controlled"
+        assert host._approval.mode == "controlled"
 
         # Invalid arg.
         result = host._handle_command("/mode foo")
         assert "unknown mode" in result.lower() or "choices" in result.lower()
-        assert host._env.mode == "controlled"
+        assert host._approval.mode == "controlled"
         print("  /mode command OK")
 
 
@@ -512,7 +512,7 @@ def test_host_process_exec():
     """Test that _process_message handles exec actions correctly."""
     with tempfile.TemporaryDirectory() as td:
         host = _make_host(Path(td))
-        host._env.mode = "auto"
+        host._approval.mode = "auto"
         host._env._executor = lambda _payload, _workspace: Turn(
             role="runtime",
             content=(

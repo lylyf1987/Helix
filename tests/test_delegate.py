@@ -140,7 +140,7 @@ def test_delegate_no_model():
 def test_delegate_basic():
     """Test direct delegation: sub-agent runs and returns result."""
     with tempfile.TemporaryDirectory() as td:
-        env = Environment(workspace=Path(td), mode="auto")
+        env = Environment(workspace=Path(td))
         model = SubAgentModel()
 
         action = Action(
@@ -168,8 +168,8 @@ def test_delegate_shares_parent_workspace():
     """Verify sub-agent shares the parent workspace (no child dir created)."""
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
-        env = Environment(workspace=workspace, mode="auto", executor=sandbox_executor)
-        policy = ApprovalPolicy()
+        env = Environment(workspace=workspace, executor=sandbox_executor)
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
 
         action = Action(
@@ -197,7 +197,7 @@ def test_full_delegation_loop():
         workspace = Path(td)
         model = SharedModel()
 
-        env = Environment(workspace=workspace, mode="auto")
+        env = Environment(workspace=workspace)
         env.record(Turn(role="user", content="Who created Python?"))
 
         agent = Agent(
@@ -253,10 +253,9 @@ def test_delegate_with_exec_in_sub_agent():
 
         env = Environment(
             workspace=workspace,
-            mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy()
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
 
         action = Action(
@@ -294,7 +293,7 @@ def test_delegate_persists_and_restores_state():
         workspace = Path(td)
         state_root = workspace / ".state"
         state_root.mkdir(parents=True)
-        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+        env = Environment(workspace=workspace, state_root=state_root)
 
         # First delegation
         action1 = Action(
@@ -333,7 +332,7 @@ def test_delegate_new_role_starts_fresh():
         workspace = Path(td)
         state_root = workspace / ".state"
         state_root.mkdir(parents=True)
-        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+        env = Environment(workspace=workspace, state_root=state_root)
 
         action = Action(
             response="Delegating...", type="delegate",
@@ -358,7 +357,7 @@ def test_delegate_meta_registry_updated():
         workspace = Path(td)
         state_root = workspace / ".state"
         state_root.mkdir(parents=True)
-        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+        env = Environment(workspace=workspace, state_root=state_root)
 
         _delegate(Action(
             response="", type="delegate",
@@ -388,7 +387,7 @@ def test_delegate_role_description_updates_meta():
         workspace = Path(td)
         state_root = workspace / ".state"
         state_root.mkdir(parents=True)
-        env = Environment(workspace=workspace, mode="auto", state_root=state_root)
+        env = Environment(workspace=workspace, state_root=state_root)
 
         _delegate(Action(
             response="", type="delegate",
@@ -446,8 +445,8 @@ def test_sub_agent_sigint_propagates_past_delegate():
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
         executor = HostSandboxExecutor(workspace)
-        env = Environment(workspace=workspace, executor=executor, mode="auto")
-        env.on_before_execute(ApprovalPolicy())
+        env = Environment(workspace=workspace, executor=executor)
+        env.on_before_execute(ApprovalPolicy(mode="auto"))
         env.record(Turn(role="user", content="do a long sub-agent exec"))
 
         model = _SharedModel()
@@ -494,10 +493,11 @@ def test_sub_agent_sigint_propagates_past_delegate():
         print("  Sub-agent SIGINT propagates past delegate OK")
 
 
-def test_delegate_mode_propagates_through_parent_pointer():
-    """Sub-envs created during delegation must read mode from the root via the
-    parent pointer, so a runtime /mode switch — or 'a' chosen at an inner
-    approval prompt — is visible at every depth without re-construction."""
+def test_delegate_mode_propagates_via_shared_policy():
+    """A single ApprovalPolicy instance is installed on every sub-env created
+    by _delegate (sub_env._on_before_execute = env._on_before_execute), so a
+    mode flip at any depth — /mode auto or 'a' at an inner prompt — is visible
+    everywhere immediately."""
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
@@ -505,22 +505,22 @@ def test_delegate_mode_propagates_through_parent_pointer():
 
     with tempfile.TemporaryDirectory() as td:
         root_env = Environment(workspace=Path(td), executor=sandbox_executor)
-        # Mirror what loop._delegate does at runtime — pass parent, no mode kwarg.
-        sub_env = Environment(
-            workspace=Path(td),
-            parent=root_env,
-            executor=sandbox_executor,
-        )
-        assert root_env.mode == "controlled" and sub_env.mode == "controlled"
+        policy = ApprovalPolicy()
+        root_env.on_before_execute(policy)
 
-        # Mutating root flips sub.
-        root_env.mode = "auto"
-        assert sub_env.mode == "auto"
+        # _delegate would install the same policy on the sub-env; mirror that.
+        sub_env = Environment(workspace=Path(td), executor=sandbox_executor)
+        sub_env._on_before_execute = root_env._on_before_execute
 
-        # Mutating through sub also walks to root.
-        sub_env.mode = "controlled"
-        assert root_env.mode == "controlled"
-        print("  Delegate mode propagates via parent pointer OK")
+        assert sub_env._on_before_execute is policy
+
+        # Flipping the (single) policy is visible at every depth — there is no
+        # per-env mode to keep in sync.
+        policy.mode = "auto"
+        action = Action(response="", type="exec", payload={"code_type": "bash", "script": "echo x"})
+        assert sub_env._on_before_execute(sub_env, action) is True
+        assert root_env._on_before_execute(root_env, action) is True
+        print("  Delegate mode propagates via shared policy OK")
 
 
 def test_delegate_without_state_root_still_works():
@@ -531,7 +531,7 @@ def test_delegate_without_state_root_still_works():
             return '<output>{"response": "Done.", "next_action": "chat", "action_input": {}}</output>'
 
     with tempfile.TemporaryDirectory() as td:
-        env = Environment(workspace=Path(td), mode="auto")
+        env = Environment(workspace=Path(td))
         assert env.state_root is None
         result = _delegate(Action(
             response="", type="delegate",
@@ -565,7 +565,7 @@ if __name__ == "__main__":
     test_delegate_new_role_starts_fresh()
     test_delegate_meta_registry_updated()
     test_delegate_role_description_updates_meta()
-    test_delegate_mode_propagates_through_parent_pointer()
+    test_delegate_mode_propagates_via_shared_policy()
     test_delegate_without_state_root_still_works()
 
     print("\n✅ All delegation tests passed!")

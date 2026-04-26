@@ -227,10 +227,9 @@ def run_simulation_scenario_1():
         # Set up environment
         env = Environment(
             workspace=workspace,
-            mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy()
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
 
         # Record user request
@@ -341,10 +340,9 @@ def run_simulation_scenario_2():
 
         env = Environment(
             workspace=workspace,
-            mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy()
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
 
         env.record(Turn(role="user", content="Gather system information for me."))
@@ -457,10 +455,9 @@ def run_simulation_scenario_5():
 
         env = Environment(
             workspace=workspace,
-            mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy()
+        policy = ApprovalPolicy(mode="auto")
         env.on_before_execute(policy)
 
         env.record(Turn(role="user", content="Check the Python version."))

@@ -175,9 +175,7 @@ class RuntimeHost:
         # 6. Compactor (LLM-based context summarization)
         self._compactor = Compactor(self._model)
 
-        # 7. Environment (sandbox + compactor + history). Mode defaults to
-        # "controlled" — flip live with `/mode auto` or via `a` at an approval
-        # prompt. Mode is intentionally not persisted across restarts.
+        # 7. Environment (sandbox + compactor + history)
         self._env = Environment(
             workspace=self.workspace,
             executor=self._sandbox_executor,
@@ -195,9 +193,10 @@ class RuntimeHost:
             self._agent.last_prompt = saved_prompt if isinstance(saved_prompt, list) else str(saved_prompt or "")
             self._session_loaded = True
 
-        # 9. Approval policy (execution gate for controlled mode). Mode is
-        # read from the env at call time, so a single policy instance serves
-        # the whole delegate tree.
+        # 9. Approval policy (execution gate for controlled mode). Mode lives
+        # here, not on the env — sub-environments install this same policy as
+        # their hook, so a runtime mode switch is visible at every depth.
+        # Sessions always start in "controlled" (mode is not persisted).
         self._approval = ApprovalPolicy(prompt=self._prompt_approval_choice)
         self._env.on_before_execute(self._approval)
 
@@ -292,7 +291,7 @@ class RuntimeHost:
         Returns:
             Exit code (0 for normal exit).
         """
-        print(f"Agentic System — model={self._model.model}, mode={self._env.mode}")
+        print(f"Agentic System — model={self._model.model}, mode={self._approval.mode}")
         print(f"Workspace: {self.workspace}")
         state = "resumed" if self._session_loaded else "new"
         print(f"Session: {self.session_id} ({state})")
@@ -380,13 +379,13 @@ class RuntimeHost:
             return self._status_text()
         if cmd == "/mode":
             if len(parts) < 2:
-                return f"Current mode: {self._env.mode}. Usage: /mode <auto|controlled>"
+                return f"Current mode: {self._approval.mode}. Usage: /mode <auto|controlled>"
             new_mode = parts[1].lower()
             if new_mode not in ("auto", "controlled"):
                 return f"Unknown mode: {new_mode!r}. Choices: auto, controlled."
-            if new_mode == self._env.mode:
+            if new_mode == self._approval.mode:
                 return f"Already in {new_mode} mode."
-            self._env.mode = new_mode
+            self._approval.mode = new_mode
             return f"Mode switched to {new_mode}."
         if cmd == "/view":
             if len(parts) < 2:
@@ -416,7 +415,7 @@ class RuntimeHost:
         lines = [
             f"llm_endpoint_url={self._model.endpoint_url}",
             f"llm_model={self._model.model}",
-            f"mode={self._env.mode}",
+            f"mode={self._approval.mode}",
             f"workspace={self.workspace}",
             f"session_id={self.session_id}",
             f"session_state={self._session_state()}",
