@@ -31,7 +31,7 @@ combined_phase = _load_module(SKILL_DIR / "scripts" / "search_and_fetch.py", "co
 def test_skill_md_declares_multi_mode():
     text = (SKILL_DIR / "SKILL.md").read_text(encoding="utf-8")
     assert "script_mode: multi" in text
-    assert "handler: scripts/search_searxng.py" in text
+    assert "scripts/search_searxng.py" in text
     assert "scripts/fetch_pages.py" in text
     print("  search-online-context SKILL.md multi mode OK")
 

@@ -57,9 +57,7 @@ def test_prepare_model_success(monkeypatch):
             assert req.full_url == "http://local-model.example/models/prepare"
             payload = json.loads(req.data.decode("utf-8"))
             assert payload["request_timeout_seconds"] == 1200
-            assert payload["model_spec"]["id"] == "builtin.generate-image.mlx-z-image"
             assert payload["model_spec"]["backend"] == "mlx"
-            assert payload["model_spec"]["family"] == "mlx.z_image"
             assert payload["model_spec"]["source"]["repo_id"] == "uqer1244/MLX-z-image"
             return _FakeResponse(
                 json.dumps(

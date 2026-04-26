@@ -57,20 +57,18 @@ def test_prepare_video_model_success(monkeypatch):
             assert req.full_url == "http://local-model.example/models/prepare"
             payload = json.loads(req.data.decode("utf-8"))
             assert payload["request_timeout_seconds"] == 1200
-            assert payload["model_spec"]["id"] == "builtin.generate-video.ltx-video"
-            assert payload["model_spec"]["backend"] == "pytorch"
-            assert payload["model_spec"]["family"] == "pytorch.diffusers_ltx_video"
-            assert payload["model_spec"]["source"]["repo_id"] == "Lightricks/LTX-Video"
+            assert payload["model_spec"]["backend"] == "mlx"
+            assert payload["model_spec"]["source"]["repo_id"] == "notapalindrome/ltx23-mlx-av-q4"
             return _FakeResponse(
                 json.dumps(
                     {
                         "status": "ok",
                         "task_type": "text_to_video",
-                        "backend": "pytorch",
-                        "model_id": "builtin.generate-video.ltx-video",
+                        "backend": "mlx",
+                        "model_id": "builtin.generate-video.ltx23-mlx",
                         "outputs": {"prepared": True, "model_root": "/tmp/model-root"},
                         "error_code": "",
-                        "message": "prepared model builtin.generate-video.ltx-video",
+                        "message": "prepared model notapalindrome/ltx23-mlx-av-q4",
                     }
                 ).encode("utf-8")
             )
@@ -83,5 +81,5 @@ def test_prepare_video_model_success(monkeypatch):
         assert out["status"] == "ok"
         assert out["executed_skill"] == "generate-video"
         assert out["phase"] == "prepare"
-        assert out["model_used"] == "Lightricks/LTX-Video"
+        assert out["model_used"] == "notapalindrome/ltx23-mlx-av-q4"
         assert "prepared" in out["message"]

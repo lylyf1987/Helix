@@ -56,24 +56,22 @@ def test_generate_video_text_only_success(monkeypatch):
             assert timeout == 1200
             payload = json.loads(req.data.decode("utf-8"))
             assert payload["task_type"] == "text_to_video"
-            assert payload["model_spec"]["id"] == "builtin.generate-video.ltx-video"
-            assert payload["model_spec"]["family"] == "pytorch.diffusers_ltx_video"
             assert payload["request_timeout_seconds"] == 1200
             assert payload["inputs"]["prompt"] == "A cinematic beach scene"
             assert payload["inputs"]["size"] == "704x512"
             assert payload["inputs"]["output_path"] == "generated/video.mp4"
-            assert payload["inputs"]["guidance_rescale"] == 0.0
-            assert payload["inputs"]["decode_timestep"] == 0.03
-            assert payload["inputs"]["decode_noise_scale"] == 0.025
-            assert payload["inputs"]["max_sequence_length"] == 128
+            assert payload["inputs"]["num_frames"] == 161
+            assert payload["inputs"]["num_inference_steps"] == 50
+            assert payload["inputs"]["guidance_scale"] == 3.0
+            assert payload["inputs"]["seed"] == 42
             assert "image_path" not in payload["inputs"]
             return _FakeResponse(
                 json.dumps(
                     {
                         "status": "ok",
                         "task_type": "text_to_video",
-                        "backend": "pytorch",
-                        "model_id": "builtin.generate-video.ltx-video",
+                        "backend": "mlx",
+                        "model_id": "builtin.generate-video.ltx23-mlx",
                         "outputs": {
                             "output_path": "generated/video.mp4",
                             "fps": 25,
@@ -94,16 +92,12 @@ def test_generate_video_text_only_success(monkeypatch):
                 {
                     "prompt": "A cinematic beach scene",
                     "image_path": "",
+                    "image_strength": 1.0,
+                    "image_frame_idx": 0,
                     "size": "704x512",
-                    "negative_prompt": "",
                     "num_frames": 161,
-                    "fps": 25,
                     "num_inference_steps": 50,
                     "guidance_scale": 3.0,
-                    "guidance_rescale": 0.0,
-                    "decode_timestep": 0.03,
-                    "decode_noise_scale": 0.025,
-                    "max_sequence_length": 128,
                     "seed": 42,
                     "output_path": "generated/video.mp4",
                     "output_dir": "",
@@ -119,7 +113,7 @@ def test_generate_video_text_only_success(monkeypatch):
         assert out["output_path"] == "generated/video.mp4"
         assert out["fps"] == 25
         assert out["num_frames"] == 161
-        assert out["model_used"] == "Lightricks/LTX-Video"
+        assert out["model_used"] == "notapalindrome/ltx23-mlx-av-q4"
 
 
 def test_generate_video_image_conditioned_success(monkeypatch):
@@ -135,18 +129,17 @@ def test_generate_video_image_conditioned_success(monkeypatch):
         def fake_urlopen(req, timeout=0):
             payload = json.loads(req.data.decode("utf-8"))
             assert payload["task_type"] == "text_image_to_video"
-            assert payload["model_spec"]["id"] == "builtin.generate-video.ltx-video"
             assert payload["request_timeout_seconds"] == 1200
             assert payload["inputs"]["image_path"] == "assets/frame.png"
-            assert payload["inputs"]["decode_timestep"] == 0.03
-            assert payload["inputs"]["decode_noise_scale"] == 0.025
+            assert payload["inputs"]["image_strength"] == 0.85
+            assert payload["inputs"]["image_frame_idx"] == 0
             return _FakeResponse(
                 json.dumps(
                     {
                         "status": "ok",
                         "task_type": "text_image_to_video",
-                        "backend": "pytorch",
-                        "model_id": "builtin.generate-video.ltx-video",
+                        "backend": "mlx",
+                        "model_id": "builtin.generate-video.ltx23-mlx",
                         "outputs": {
                             "output_path": "generated/conditioned.mp4",
                             "fps": 25,
@@ -167,16 +160,12 @@ def test_generate_video_image_conditioned_success(monkeypatch):
                 {
                     "prompt": "Animate this frame gently.",
                     "image_path": "assets/frame.png",
+                    "image_strength": 0.85,
+                    "image_frame_idx": 0,
                     "size": "704x512",
-                    "negative_prompt": "",
                     "num_frames": 121,
-                    "fps": 25,
                     "num_inference_steps": 50,
                     "guidance_scale": 3.0,
-                    "guidance_rescale": 0.0,
-                    "decode_timestep": 0.03,
-                    "decode_noise_scale": 0.025,
-                    "max_sequence_length": 128,
                     "seed": 42,
                     "output_path": "generated/conditioned.mp4",
                     "output_dir": "",
@@ -192,66 +181,3 @@ def test_generate_video_image_conditioned_success(monkeypatch):
         assert out["output_path"] == "generated/conditioned.mp4"
 
 
-def test_generate_video_passes_custom_ltx_parameters(monkeypatch):
-    with tempfile.TemporaryDirectory() as td:
-        workspace = Path(td)
-        monkeypatch.chdir(workspace)
-        monkeypatch.setenv("HELIX_LOCAL_MODEL_SERVICE_URL", "http://local-model.example")
-        monkeypatch.setenv("HELIX_LOCAL_MODEL_SERVICE_TOKEN", "secret-token")
-
-        def fake_urlopen(req, timeout=0):
-            payload = json.loads(req.data.decode("utf-8"))
-            assert payload["model_spec"]["id"] == "builtin.generate-video.ltx-video"
-            assert payload["inputs"]["guidance_scale"] == 3.5
-            assert payload["inputs"]["guidance_rescale"] == 0.4
-            assert payload["inputs"]["decode_timestep"] == 0.04
-            assert payload["inputs"]["decode_noise_scale"] == 0.03
-            assert payload["inputs"]["max_sequence_length"] == 192
-            return _FakeResponse(
-                json.dumps(
-                    {
-                        "status": "ok",
-                        "task_type": "text_to_video",
-                        "backend": "pytorch",
-                        "model_id": "builtin.generate-video.ltx-video",
-                        "outputs": {
-                            "output_path": "generated/custom.mp4",
-                            "fps": 25,
-                            "num_frames": 161,
-                        },
-                        "error_code": "",
-                        "message": "generated video at generated/custom.mp4",
-                    }
-                ).encode("utf-8")
-            )
-
-        monkeypatch.setattr(script, "urlopen", fake_urlopen)
-
-        out, code = script.run(
-            type(
-                "Args",
-                (),
-                {
-                    "prompt": "A slow cinematic dolly around a modern living room.",
-                    "image_path": "",
-                    "size": "704x512",
-                    "negative_prompt": "",
-                    "num_frames": 161,
-                    "fps": 25,
-                    "num_inference_steps": 50,
-                    "guidance_scale": 3.5,
-                    "guidance_rescale": 0.4,
-                    "decode_timestep": 0.04,
-                    "decode_noise_scale": 0.03,
-                    "max_sequence_length": 192,
-                    "seed": 42,
-                    "output_path": "generated/custom.mp4",
-                    "output_dir": "",
-                    "timeout": 1200,
-                },
-            )()
-        )
-
-        assert code == 0
-        assert out["status"] == "ok"
-        assert out["output_path"] == "generated/custom.mp4"

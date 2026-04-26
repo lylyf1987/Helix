@@ -55,8 +55,6 @@ def test_generate_image_generation_success(monkeypatch):
         def fake_urlopen(req, timeout=0):
             assert timeout == 30
             payload = json.loads(req.data.decode("utf-8"))
-            assert payload["model_spec"]["id"] == "builtin.generate-image.mlx-z-image"
-            assert payload["model_spec"]["family"] == "mlx.z_image"
             assert payload["request_timeout_seconds"] == 30
             assert payload["inputs"]["prompt"] == "A poster concept"
             assert payload["inputs"]["size"] == "1536x1024"

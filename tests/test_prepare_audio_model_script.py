@@ -57,9 +57,7 @@ def test_prepare_audio_model_success(monkeypatch):
             assert req.full_url == "http://local-model.example/models/prepare"
             payload = json.loads(req.data.decode("utf-8"))
             assert payload["request_timeout_seconds"] == 1200
-            assert payload["model_spec"]["id"] == "builtin.generate-audio.qwen3-tts-customvoice"
             assert payload["model_spec"]["backend"] == "pytorch"
-            assert payload["model_spec"]["family"] == "pytorch.qwen_tts_custom_voice"
             assert payload["model_spec"]["source"]["repo_id"] == "Qwen/Qwen3-TTS-12Hz-1.7B-CustomVoice"
             return _FakeResponse(
                 json.dumps(

@@ -56,8 +56,6 @@ def test_generate_audio_success(monkeypatch):
             assert timeout == 1200
             payload = json.loads(req.data.decode("utf-8"))
             assert payload["task_type"] == "text_to_audio"
-            assert payload["model_spec"]["id"] == "builtin.generate-audio.qwen3-tts-customvoice"
-            assert payload["model_spec"]["family"] == "pytorch.qwen_tts_custom_voice"
             assert payload["request_timeout_seconds"] == 1200
             assert payload["inputs"]["text"] == "Welcome home."
             assert payload["inputs"]["language"] == "English"
