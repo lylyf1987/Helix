@@ -58,6 +58,11 @@ class Environment:
     Args:
         workspace: Working directory for the agent.
         mode: "auto" (no approval) or "controlled" (approval required for exec).
+            Ignored when ``parent`` is provided — sub-environments read mode
+            from their parent so that runtime mode switches propagate to every
+            depth without coordination.
+        parent: When set, this env is a sub-environment; ``mode`` reads/writes
+            walk to the root of the parent chain.
         token_limit: Maximum token budget for LLM context.
         keep_last_k: Number of recent turns to keep verbatim after compaction.
         executor: Sandbox execution function. Receives (payload, workspace) -> Turn.
@@ -68,6 +73,7 @@ class Environment:
         workspace: Path,
         *,
         mode: str = "controlled",
+        parent: Optional["Environment"] = None,
         token_limit: int = int(50_000 * 0.75),
         keep_last_k: int = 10,
         executor: Optional[SandboxExecutor] = None,
@@ -76,7 +82,11 @@ class Environment:
     ) -> None:
         self.workspace = Path(workspace).expanduser().resolve()
         self.workspace.mkdir(parents=True, exist_ok=True)
-        self.mode = mode
+        self._parent = parent
+        # Sub-envs never own their mode — they always defer to the root via
+        # the property below, so a /mode switch (or 'a' at an approval prompt)
+        # propagates to every in-flight delegate immediately.
+        self._mode: Optional[str] = mode if parent is None else None
         self.token_limit = token_limit
         self.keep_last_k = keep_last_k
         # Set by the runtime after the executor is attached (see RuntimeHost
@@ -100,6 +110,21 @@ class Environment:
 
         # Hooks
         self._on_before_execute: Optional[OnBeforeExecute] = None
+
+    # ----- Mode (parent-aware) -------------------------------------------- #
+
+    @property
+    def mode(self) -> str:
+        if self._parent is not None:
+            return self._parent.mode
+        return self._mode or "controlled"
+
+    @mode.setter
+    def mode(self, value: str) -> None:
+        if self._parent is not None:
+            self._parent.mode = value
+            return
+        self._mode = value
 
     # ----- Hook registration ----------------------------------------------- #
 

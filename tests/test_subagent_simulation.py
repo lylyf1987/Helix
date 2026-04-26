@@ -230,7 +230,7 @@ def run_simulation_scenario_1():
             mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy(mode="auto")
+        policy = ApprovalPolicy()
         env.on_before_execute(policy)
 
         # Record user request
@@ -344,7 +344,7 @@ def run_simulation_scenario_2():
             mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy(mode="auto")
+        policy = ApprovalPolicy()
         env.on_before_execute(policy)
 
         env.record(Turn(role="user", content="Gather system information for me."))
@@ -460,7 +460,7 @@ def run_simulation_scenario_5():
             mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy(mode="auto")
+        policy = ApprovalPolicy()
         env.on_before_execute(policy)
 
         env.record(Turn(role="user", content="Check the Python version."))

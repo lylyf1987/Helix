@@ -51,7 +51,7 @@ helix \
 
 You land in an interactive prompt. Type a task in plain English and the agent will plan and execute it in the host-shell sandbox. Type `/help` for commands, `/exit` to quit.
 
-**About approval mode.** By default the agent runs in `--mode controlled`, which prompts you to approve every bash/python execution before it runs. You see the job name, the script, and an `[y/N/s/p/k]` menu — this is how OpenHelix keeps you in the loop on every concrete action the agent takes. If you trust the task and want the agent to run autonomously without prompts, start it with `--mode auto`. The two valid values are `controlled` (default) and `auto`.
+**About approval mode.** The agent always starts in controlled mode, which prompts you to approve every bash/python execution before it runs. You see the job name, the script, and an `[y/N/s/p/k/a]` menu — this is how OpenHelix keeps you in the loop on every concrete action the agent takes. Pick `a` at any prompt to switch the session to auto mode and stop being asked. You can also type `/mode auto` at the REPL at any time, and `/mode controlled` to switch back. Mode is intentionally not persisted across restarts — every session starts safe-by-default.
 
 ### 3. Optional: Add Local Services
 
@@ -128,14 +128,14 @@ Everything is inspectable. `/view last_prompt` shows the exact text sent to the 
 
 | Command | Purpose |
 |---|---|
-| `helix --endpoint-url URL --model MODEL --workspace PATH --session-id ID [--mode auto\|controlled] [--think enable\|disable] [--effort minimal\|low\|medium\|high]` | Start a session |
+| `helix --endpoint-url URL --model MODEL --workspace PATH --session-id ID [--think enable\|disable] [--effort minimal\|low\|medium\|high]` | Start a session |
 | `helix start searxng` | Start the SearXNG search service |
 | `helix start local-model-service` | Start the local model service |
 | `helix stop searxng \| local-model-service` | Stop a running service |
 | `helix status` | Show running services |
 | `helix model download --skill NAME` | Download model weights for a media-generation skill |
 
-`--mode` controls the approval policy: `controlled` (default) prompts you before every bash/python execution; `auto` runs without prompts.
+Approval policy is set at runtime, not on the command line: every session starts in `controlled` mode (you approve each exec). Type `/mode auto` to stop being prompted; `/mode controlled` to re-enable. You can also pick `a` at any approval prompt to flip the session to auto on the spot.
 
 `--think` and `--effort` shape how hard the model reasons. They're optional and independent; omit either to fall back to the server's default.
 

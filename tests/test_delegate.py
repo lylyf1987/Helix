@@ -169,7 +169,7 @@ def test_delegate_shares_parent_workspace():
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
         env = Environment(workspace=workspace, mode="auto", executor=sandbox_executor)
-        policy = ApprovalPolicy(mode="auto")
+        policy = ApprovalPolicy()
         env.on_before_execute(policy)
 
         action = Action(
@@ -256,7 +256,7 @@ def test_delegate_with_exec_in_sub_agent():
             mode="auto",
             executor=sandbox_executor,
         )
-        policy = ApprovalPolicy(mode="auto")
+        policy = ApprovalPolicy()
         env.on_before_execute(policy)
 
         action = Action(
@@ -447,7 +447,7 @@ def test_sub_agent_sigint_propagates_past_delegate():
         workspace = Path(td)
         executor = HostSandboxExecutor(workspace)
         env = Environment(workspace=workspace, executor=executor, mode="auto")
-        env.on_before_execute(ApprovalPolicy(mode="auto"))
+        env.on_before_execute(ApprovalPolicy())
         env.record(Turn(role="user", content="do a long sub-agent exec"))
 
         model = _SharedModel()
@@ -494,6 +494,35 @@ def test_sub_agent_sigint_propagates_past_delegate():
         print("  Sub-agent SIGINT propagates past delegate OK")
 
 
+def test_delegate_mode_propagates_through_parent_pointer():
+    """Sub-envs created during delegation must read mode from the root via the
+    parent pointer, so a runtime /mode switch — or 'a' chosen at an inner
+    approval prompt — is visible at every depth without re-construction."""
+
+    class MockModel:
+        def generate(self, messages, *, chunk_callback=None, **_kwargs):
+            return '<output>{"response": "ok", "next_action": "chat", "action_input": {}}</output>'
+
+    with tempfile.TemporaryDirectory() as td:
+        root_env = Environment(workspace=Path(td), executor=sandbox_executor)
+        # Mirror what loop._delegate does at runtime — pass parent, no mode kwarg.
+        sub_env = Environment(
+            workspace=Path(td),
+            parent=root_env,
+            executor=sandbox_executor,
+        )
+        assert root_env.mode == "controlled" and sub_env.mode == "controlled"
+
+        # Mutating root flips sub.
+        root_env.mode = "auto"
+        assert sub_env.mode == "auto"
+
+        # Mutating through sub also walks to root.
+        sub_env.mode = "controlled"
+        assert root_env.mode == "controlled"
+        print("  Delegate mode propagates via parent pointer OK")
+
+
 def test_delegate_without_state_root_still_works():
     """Delegation works without state_root (no persistence)."""
 
@@ -536,6 +565,7 @@ if __name__ == "__main__":
     test_delegate_new_role_starts_fresh()
     test_delegate_meta_registry_updated()
     test_delegate_role_description_updates_meta()
+    test_delegate_mode_propagates_through_parent_pointer()
     test_delegate_without_state_root_still_works()
 
     print("\n✅ All delegation tests passed!")

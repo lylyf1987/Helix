@@ -103,12 +103,10 @@ def test_provider_with_api_key():
 def test_host_init():
     """Verify RuntimeHost initializes with correct configuration."""
     with tempfile.TemporaryDirectory() as td:
-        host = _make_host(
-            workspace=Path(td),
-            mode="auto",
-        )
+        host = _make_host(workspace=Path(td))
+        host._env.mode = "auto"
         assert host._model.model == "llama3.1:8b"
-        assert host.mode == "auto"
+        assert host._env.mode == "auto"
         assert host.workspace == Path(td).resolve()
         assert host.session_id == "session-01"
         assert host.session_root == (Path(td) / "sessions" / "session-01").resolve()
@@ -122,18 +120,17 @@ def test_host_init():
 
 
 def test_host_init_controlled():
-    """Verify RuntimeHost in controlled mode."""
+    """Verify RuntimeHost in controlled mode (the default)."""
     with tempfile.TemporaryDirectory() as td:
         host = _make_host(
             workspace=Path(td),
             endpoint_url="https://api.deepseek.com/v1",
             api_key="test-key",
             model="deepseek-chat",
-            mode="controlled",
         )
         assert host._model.model == "deepseek-chat"
         assert "deepseek.com" in host._model.endpoint_url
-        assert host.mode == "controlled"
+        assert host._env.mode == "controlled"
         print("  RuntimeHost init (controlled) OK")
 
 
@@ -154,9 +151,9 @@ def test_host_init_with_session_id_loads_existing_state():
 
         host = _make_host(
             workspace=workspace,
-            mode="auto",
             session_id="review-01",
         )
+        host._env.mode = "auto"
 
         assert host.session_id == "review-01"
         assert host.session_state_path == session_path.resolve()
@@ -278,6 +275,38 @@ def test_host_command_status():
         assert "image_analysis=" not in result
         assert "image_generation=" not in result
         print("  /status command OK")
+
+
+def test_host_command_mode():
+    """Verify /mode shows current mode and switches between auto/controlled."""
+    with tempfile.TemporaryDirectory() as td:
+        host = _make_host(Path(td))
+
+        # No-arg form prints current mode and usage.
+        result = host._handle_command("/mode")
+        assert "controlled" in result
+        assert "auto" in result  # usage line lists choices
+        assert host._env.mode == "controlled"
+
+        # Switching to auto.
+        result = host._handle_command("/mode auto")
+        assert "auto" in result.lower()
+        assert host._env.mode == "auto"
+
+        # Same-mode is a no-op with a friendly notice.
+        result = host._handle_command("/mode auto")
+        assert "already" in result.lower()
+        assert host._env.mode == "auto"
+
+        # Switching back.
+        result = host._handle_command("/mode controlled")
+        assert host._env.mode == "controlled"
+
+        # Invalid arg.
+        result = host._handle_command("/mode foo")
+        assert "unknown mode" in result.lower() or "choices" in result.lower()
+        assert host._env.mode == "controlled"
+        print("  /mode command OK")
 
 
 def test_host_command_full_history():
@@ -482,7 +511,8 @@ def test_host_process_message_saves_named_session():
 def test_host_process_exec():
     """Test that _process_message handles exec actions correctly."""
     with tempfile.TemporaryDirectory() as td:
-        host = _make_host(Path(td), mode="auto")
+        host = _make_host(Path(td))
+        host._env.mode = "auto"
         host._env._executor = lambda _payload, _workspace: Turn(
             role="runtime",
             content=(
@@ -621,17 +651,16 @@ def test_cli_parser():
     args = parser.parse_args([
         "--endpoint-url", "https://api.deepseek.com/v1",
         "--api-key", "test-key",
-        "--mode", "auto",
         "--model", "deepseek-chat",
         "--workspace", "/tmp/test",
         "--session-id", "design-01",
     ])
     assert args.endpoint_url == "https://api.deepseek.com/v1"
     assert args.api_key == "test-key"
-    assert args.mode == "auto"
     assert args.model == "deepseek-chat"
     assert args.workspace == "/tmp/test"
     assert args.session_id == "design-01"
+    assert not hasattr(args, "mode"), "--mode flag should no longer exist"
     print("  CLI parser OK")
 
 
@@ -888,6 +917,7 @@ if __name__ == "__main__":
     print("\n=== Slash Commands ===")
     test_host_command_help()
     test_host_command_status()
+    test_host_command_mode()
     test_host_command_full_history()
     test_host_command_observation()
     test_host_command_workflow_summary()

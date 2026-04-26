@@ -110,7 +110,7 @@ def test_prompt_shows_outside_write_warning():
     def capture(_prompt: str) -> str:
         return "n"  # deny — raises UserInterrupted under current semantics
 
-    policy = ApprovalPolicy(mode="controlled", prompt=capture)
+    policy = ApprovalPolicy(prompt=capture)
 
     # Monkey-patch write_approval so we capture what the user would see.
     import helix.runtime.approval as approval_mod

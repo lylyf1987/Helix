@@ -319,10 +319,12 @@ def _delegate(
     context = task.get("context", "")
     role_description = task.get("role_description", "")
 
-    # Build sub-environment sharing parent's infrastructure
+    # Build sub-environment sharing parent's infrastructure. The parent
+    # reference is what makes mode switches (e.g. /mode auto, or 'a' chosen
+    # at an inner approval prompt) propagate to every depth in real time.
     sub_env = Environment(
         workspace=env.workspace,
-        mode=env.mode,
+        parent=env,
         token_limit=env.token_limit,
         keep_last_k=env.keep_last_k,
         executor=env._executor,

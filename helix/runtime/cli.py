@@ -165,13 +165,12 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Example:\n"
-            "  %(prog)s --endpoint-url https://api.deepseek.com/v1 --api-key $DEEPSEEK_API_KEY --model deepseek-chat --mode auto --workspace ~/agent --session-id research-01\n"
+            "  %(prog)s --endpoint-url https://api.deepseek.com/v1 --api-key $DEEPSEEK_API_KEY --model deepseek-chat --workspace ~/agent --session-id research-01\n"
         ),
     )
     parser.add_argument("--endpoint-url", required=True, help="LLM API endpoint URL")
     parser.add_argument("--model", required=True, help="Model name")
     parser.add_argument("--api-key", default="", help="LLM API key (default: empty)")
-    parser.add_argument("--mode", default="controlled", choices=["auto", "controlled"], help="Execution mode")
     parser.add_argument("--workspace", required=True, help="Runtime workspace path")
     parser.add_argument("--session-id", required=True, help="Session identifier")
     parser.add_argument(
@@ -223,7 +222,6 @@ def main(argv: list[str] = None) -> int:
         endpoint_url=args.endpoint_url,
         model=args.model,
         api_key=args.api_key,
-        mode=args.mode,
         think=think,
         reasoning_effort=args.effort,
     )

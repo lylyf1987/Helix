@@ -88,6 +88,8 @@ class RuntimeHost:
         "Commands:",
         "  /help                        Show this help.",
         "  /status                      Show session status.",
+        "  /mode                        Show the current execution mode.",
+        "  /mode <auto|controlled>      Switch execution mode for the rest of this session.",
         "  /view <field>                Inspect the main session (fields: " + ", ".join(_VIEW_FIELDS) + ").",
         "  /view <field> <role>         Inspect a sub-agent's field by role.",
         "  /view sub_agents             List all sub-agents created in this session.",
@@ -102,7 +104,6 @@ class RuntimeHost:
         endpoint_url: str,
         model: str,
         api_key: str = "",
-        mode: str = "controlled",
         think: bool | None = None,
         reasoning_effort: str | None = None,
     ) -> None:
@@ -122,7 +123,6 @@ class RuntimeHost:
             path.mkdir(parents=True, exist_ok=True)
         self.session_state_path = (self.state_root / "session_state.json").resolve()
         self._session_loaded = False
-        self.mode = mode
         self._sandbox_status_fields: dict[str, str] = {}
         self._user_input_session = self._build_user_input_session()
 
@@ -175,11 +175,12 @@ class RuntimeHost:
         # 6. Compactor (LLM-based context summarization)
         self._compactor = Compactor(self._model)
 
-        # 7. Environment (sandbox + compactor + history)
+        # 7. Environment (sandbox + compactor + history). Mode defaults to
+        # "controlled" — flip live with `/mode auto` or via `a` at an approval
+        # prompt. Mode is intentionally not persisted across restarts.
         self._env = Environment(
             workspace=self.workspace,
             executor=self._sandbox_executor,
-            mode=mode,
             compactor=self._compactor,
             state_root=self.state_root,
         )
@@ -194,11 +195,10 @@ class RuntimeHost:
             self._agent.last_prompt = saved_prompt if isinstance(saved_prompt, list) else str(saved_prompt or "")
             self._session_loaded = True
 
-        # 9. Approval policy (execution gate for controlled mode)
-        self._approval = ApprovalPolicy(
-            mode=mode,
-            prompt=self._prompt_approval_choice,
-        )
+        # 9. Approval policy (execution gate for controlled mode). Mode is
+        # read from the env at call time, so a single policy instance serves
+        # the whole delegate tree.
+        self._approval = ApprovalPolicy(prompt=self._prompt_approval_choice)
         self._env.on_before_execute(self._approval)
 
     # ----- Input ------------------------------------------------------------- #
@@ -292,7 +292,7 @@ class RuntimeHost:
         Returns:
             Exit code (0 for normal exit).
         """
-        print(f"Agentic System — model={self._model.model}, mode={self.mode}")
+        print(f"Agentic System — model={self._model.model}, mode={self._env.mode}")
         print(f"Workspace: {self.workspace}")
         state = "resumed" if self._session_loaded else "new"
         print(f"Session: {self.session_id} ({state})")
@@ -378,6 +378,16 @@ class RuntimeHost:
             return self.HELP_TEXT
         if cmd == "/status":
             return self._status_text()
+        if cmd == "/mode":
+            if len(parts) < 2:
+                return f"Current mode: {self._env.mode}. Usage: /mode <auto|controlled>"
+            new_mode = parts[1].lower()
+            if new_mode not in ("auto", "controlled"):
+                return f"Unknown mode: {new_mode!r}. Choices: auto, controlled."
+            if new_mode == self._env.mode:
+                return f"Already in {new_mode} mode."
+            self._env.mode = new_mode
+            return f"Mode switched to {new_mode}."
         if cmd == "/view":
             if len(parts) < 2:
                 return (
@@ -406,7 +416,7 @@ class RuntimeHost:
         lines = [
             f"llm_endpoint_url={self._model.endpoint_url}",
             f"llm_model={self._model.model}",
-            f"mode={self.mode}",
+            f"mode={self._env.mode}",
             f"workspace={self.workspace}",
             f"session_id={self.session_id}",
             f"session_state={self._session_state()}",

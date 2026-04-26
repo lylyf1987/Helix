@@ -619,7 +619,7 @@ def test_run_loop_exec_denied_returns_control():
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), mode="controlled")
-        env.on_before_execute(ApprovalPolicy(mode="controlled", prompt=lambda _prompt: "n"))
+        env.on_before_execute(ApprovalPolicy(prompt=lambda _prompt: "n"))
         env.record(Turn(role="user", content="check status"))
         agent = Agent(MockModel(), workspace=Path(td))
 
@@ -674,7 +674,6 @@ def test_run_loop_exec_cancelled_returns_control():
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), mode="controlled")
         env.on_before_execute(ApprovalPolicy(
-            mode="controlled",
             prompt=lambda _prompt: (_ for _ in ()).throw(KeyboardInterrupt()),
         ))
         env.record(Turn(role="user", content="check status"))

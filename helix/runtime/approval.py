@@ -106,20 +106,24 @@ def detect_outside_workspace_writes(payload: dict, workspace_root: Path) -> list
 class ApprovalPolicy:
     """Manages approval state for a single session.
 
-    Approval modes:
+    Mode is read from the ``Environment`` passed to ``__call__``, so a single
+    policy instance serves the whole delegate tree and a runtime ``/mode``
+    switch (or ``a`` at an approval prompt) takes effect immediately at every
+    depth.
+
+    Approval choices:
         y: allow once
         s: allow same exact exec for this session
         p: allow same script pattern for this session
         k: allow same script_path for this session (ignore args)
+        a: switch the session to auto mode and approve this exec
     """
 
     def __init__(
         self,
-        mode: str = "controlled",
         *,
         prompt: Optional[PromptFn] = None,
     ) -> None:
-        self.mode = mode
         self._prompt = prompt or input
         self.approved_exact: set[str] = set()
         self.approved_patterns: set[str] = set()
@@ -155,7 +159,7 @@ class ApprovalPolicy:
         if action.type != "exec":
             return True
 
-        if self.mode == "auto":
+        if env.mode == "auto":
             return True
 
         # Check cached approvals
@@ -195,18 +199,20 @@ class ApprovalPolicy:
 
         if pattern_key:
             details.extend([
-                "Approve this execution? [y/N/s/p/k]",
+                "Approve this execution? [y/N/s/p/k/a]",
                 "  y: allow once",
                 "  s: allow same exact exec for this session",
                 "  p: allow same script pattern for this session",
                 "  k: allow same script_path for this session (ignore args)",
+                "  a: switch to auto mode (NO MORE APPROVAL PROMPTS) and approve this exec",
             ])
         else:
             details.extend([
-                "Approve this execution? [y/N/s/k]",
+                "Approve this execution? [y/N/s/k/a]",
                 "  y: allow once",
                 "  s: allow same exact exec for this session",
                 "  k: allow same script_path for this session (ignore args)",
+                "  a: switch to auto mode (NO MORE APPROVAL PROMPTS) and approve this exec",
                 "  p: unavailable for script_path executions",
             ])
         write_approval("\n".join(details), None)
@@ -227,6 +233,13 @@ class ApprovalPolicy:
                 content="approval prompt was cancelled by user.",
             ))
 
+        if choice in {"a", "auto"}:
+            env.mode = "auto"  # property setter walks to root env
+            write_approval(
+                "runtime> Switched to auto mode for this session.",
+                None,
+            )
+            return True
         if choice in {"y", "yes", "once"}:
             return True
         if choice in {"s", "session", "exact"}:

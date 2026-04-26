@@ -38,7 +38,7 @@ user> What files are in the current directory?
 
 The agent will write a bash script (`ls -la`), execute it in the host-shell sandbox (you'll be asked to approve in controlled mode), read the output, and report back.
 
-By default the agent starts in `--mode controlled`, which means **every bash or python execution pauses for your approval first**. You'll see a prompt showing the job name, the script, and an `[y/N/s/p/k]` menu (`y` = allow once, `s` = allow same exact exec for the session, `p` = allow same script pattern, `k` = allow same script_path ignoring args, `N` = deny). If you'd rather let the agent run autonomously without any interruptions, add `--mode auto` to the `helix` command. The two valid values are `controlled` and `auto`.
+The agent always starts in **controlled** mode, which means **every bash or python execution pauses for your approval first**. You'll see a prompt showing the job name, the script, and an `[y/N/s/p/k/a]` menu (`y` = allow once, `s` = allow same exact exec for the session, `p` = allow same script pattern, `k` = allow same script_path ignoring args, `a` = switch the session to auto and approve this exec, `N` = deny and return control to you). If you'd rather let the agent run autonomously without any interruptions, type `/mode auto` at the REPL — `/mode controlled` switches back. Mode is not persisted across restarts.
 
 ## Option B: Cloud LLM (DeepSeek)
 
@@ -101,7 +101,7 @@ When you sent a message:
 1. Your message was recorded as a `[user]` turn.
 2. The agent read its system prompt (identity + available skills) and your message.
 3. The agent decided on an action (e.g., `exec` with a bash script).
-4. In controlled mode, you approved the script via the `[y/N/s/p/k]` prompt.
+4. In controlled mode, you approved the script via the `[y/N/s/p/k/a]` prompt.
 5. The script ran in the host-shell sandbox with `cwd` set to your workspace.
 6. The stdout/stderr came back as a `[runtime]` turn.
 7. The agent read the result and responded with `chat`.
@@ -142,7 +142,7 @@ Agent scripts run in the host-shell sandbox — i.e. on your shell, as your user
 
 The approval prompt is the primary safety net:
 
-- In the default `--mode controlled`, every `exec` — including `git push` — pauses for your `[y/N/s/p/k]` decision first.
+- In the default `controlled` mode, every `exec` — including `git push` — pauses for your `[y/N/s/p/k/a]` decision first.
 - The sandbox's outside-workspace write detector also highlights writes to paths outside `{{WORKSPACE_ROOT}}` in the approval prompt, so unexpected file modifications stand out before you approve.
 
 ### Scoping the blast radius
@@ -164,9 +164,9 @@ git push https://x-access-token:$GH_TOKEN@github.com/owner/repo.git master
 
 Generate the token at https://github.com/settings/tokens?type=beta → "Generate new token" → **fine-grained personal access token**, with **Repository access: Only select repositories** and a short expiration.
 
-**Approval prompts as the interactive gate.** Even without a scoped token, staying in `--mode controlled` means every push command surfaces first. Read the command, deny anything unfamiliar.
+**Approval prompts as the interactive gate.** Even without a scoped token, staying in `controlled` mode means every push command surfaces first. Read the command, deny anything unfamiliar.
 
-> **Do not run `--mode auto` unless you've scoped credentials yourself.** Auto mode skips the approval prompt, so there's nothing between the agent and your full git authority.
+> **Do not switch to auto mode (`/mode auto`, or `a` at a prompt) unless you've scoped credentials yourself.** Auto mode skips the approval prompt, so there's nothing between the agent and your full git authority.
 
 ## Next Steps
 
