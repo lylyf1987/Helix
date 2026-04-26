@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import json
 import re
+import textwrap
 from dataclasses import dataclass, field
 
 
@@ -44,7 +44,63 @@ class ActionParseError(Exception):
 
 
 # --------------------------------------------------------------------------- #
-# Output parser
+# Tag-extraction helpers
+# --------------------------------------------------------------------------- #
+
+
+_OUTPUT_RE = re.compile(r"<output>\s*(.*?)\s*</output>", re.DOTALL)
+
+
+def _extract_tag(body: str, name: str) -> str | None:
+    """Return the body of <name>...</name>, or None if the tag is absent.
+
+    A body wrapped in ``<![CDATA[...]]>`` is the verbatim escape hatch:
+    the CDATA wrapper is stripped and the inner content is returned with
+    no further whitespace processing. Use this when a script body contains
+    the literal closing tag (e.g. ``</script>``) that would otherwise close
+    the wrapping tag prematurely. The CDATA pattern is tried first so that
+    a literal ``</name>`` inside the CDATA isn't mistaken for the close.
+
+    Otherwise, whitespace policy: strip exactly one leading newline (the
+    model writes ``<tag>\\n...`` for readability — that newline is
+    formatting, not content), strip trailing whitespace, then
+    ``textwrap.dedent`` to remove common leading indentation while
+    preserving internal structure.
+    """
+    escaped = re.escape(name)
+    cdata_match = re.search(
+        rf"<{escaped}>\s*<!\[CDATA\[(.*?)\]\]>\s*</{escaped}>",
+        body,
+        re.DOTALL,
+    )
+    if cdata_match is not None:
+        return cdata_match.group(1)
+
+    plain_match = re.search(rf"<{escaped}>(.*?)</{escaped}>", body, re.DOTALL)
+    if plain_match is None:
+        return None
+    raw = plain_match.group(1)
+
+    if raw.startswith("\r\n"):
+        raw = raw[2:]
+    elif raw.startswith("\n"):
+        raw = raw[1:]
+    raw = raw.rstrip()
+    if not raw:
+        return ""
+    return textwrap.dedent(raw)
+
+
+def _extract_arg_list(args_body: str) -> list[str]:
+    """Extract <arg>...</arg> children from inside <script_args>."""
+    return [
+        match.group(1).strip()
+        for match in re.finditer(r"<arg>(.*?)</arg>", args_body, re.DOTALL)
+    ]
+
+
+# --------------------------------------------------------------------------- #
+# Public parser
 # --------------------------------------------------------------------------- #
 
 
@@ -58,74 +114,106 @@ def parse_action(
     Expected format::
 
         <output>
-        {
-          "response": "...",
-          "next_action": "chat" | "think" | "exec" | "delegate",
-          "action_input": {}
-        }
+          <response>...</response>
+          <next_action>chat | think | exec | delegate</next_action>
+          <action_input>...</action_input>     (omitted for chat/think)
         </output>
+
+    Tag bodies are raw text — no JSON escaping, no HTML entities. For
+    multi-line code in ``<script>``, write the body verbatim. If the body
+    must contain the literal closing tag (e.g. ``</script>``), wrap it in
+    ``<![CDATA[...]]>``.
 
     Raises:
         ActionParseError: on any parsing or validation failure.
     """
-    # 1. Extract <output>...</output>
-    match = re.search(r"<output>\s*(.*?)\s*</output>", raw_llm_output, re.DOTALL)
+    match = _OUTPUT_RE.search(raw_llm_output)
     if not match:
         raise ActionParseError(
             "Missing <output>...</output> tags in model response.",
             raw_text=raw_llm_output,
         )
+    body = match.group(1)
 
-    json_text = match.group(1)
-
-    # 2. Parse JSON
-    try:
-        payload = json.loads(json_text)
-    except json.JSONDecodeError as exc:
-        raise ActionParseError(
-            f"Invalid JSON inside <output> tags: {exc}",
-            raw_text=raw_llm_output,
-        ) from exc
-
-    if not isinstance(payload, dict):
-        raise ActionParseError(
-            f"Expected JSON object, got {type(payload).__name__}.",
-            raw_text=raw_llm_output,
-        )
-
-    # 3. Extract required keys
-    response = payload.get("response") or ""
-    action_type = str(payload.get("next_action", "")).strip().lower()
-    action_input = payload.get("action_input", {})
-
+    response = _extract_tag(body, "response")
     if not response:
         raise ActionParseError(
-            "Missing or empty 'response' key.",
+            "Missing or empty <response> inside <output>.",
             raw_text=raw_llm_output,
         )
 
-    # 4. Validate action type
+    next_action_raw = _extract_tag(body, "next_action")
+    if next_action_raw is None or not next_action_raw.strip():
+        raise ActionParseError(
+            "Missing or empty <next_action> inside <output>.",
+            raw_text=raw_llm_output,
+        )
+    action_type = next_action_raw.strip().lower()
+
     if action_type not in allowed_actions:
         raise ActionParseError(
             f"Invalid next_action '{action_type}'. Must be one of: {sorted(allowed_actions)}.",
             raw_text=raw_llm_output,
         )
 
-    # 5. Validate action_input shape
-    if not isinstance(action_input, dict):
-        action_input = {}
+    action_input_body = _extract_tag(body, "action_input")
 
-    if action_type in ("chat", "think") and action_input:
-        # Silently clear — these actions require empty payload.
-        action_input = {}
+    if action_type in ("chat", "think"):
+        # Lenient: absent or empty action_input both mean "no input".
+        return Action(response=response, type=action_type, payload={})
+
+    if not action_input_body:
+        raise ActionParseError(
+            f"{action_type} action requires <action_input> with details.",
+            raw_text=raw_llm_output,
+        )
 
     if action_type == "exec":
-        _validate_exec_payload(action_input, raw_llm_output)
+        payload = _parse_exec_input(action_input_body, raw_llm_output)
+        _validate_exec_payload(payload, raw_llm_output)
+    else:  # delegate
+        payload = _parse_delegate_input(action_input_body)
+        _validate_delegate_payload(payload, raw_llm_output)
 
-    if action_type == "delegate":
-        _validate_delegate_payload(action_input, raw_llm_output)
+    return Action(response=response, type=action_type, payload=payload)
 
-    return Action(response=response, type=action_type, payload=action_input)
+
+# --------------------------------------------------------------------------- #
+# action_input parsers
+# --------------------------------------------------------------------------- #
+
+
+def _parse_exec_input(input_body: str, raw_llm_output: str) -> dict:
+    payload: dict = {}
+    for field_name in ("job_name", "code_type", "script", "script_path"):
+        value = _extract_tag(input_body, field_name)
+        if value is not None:
+            payload[field_name] = value
+
+    timeout = _extract_tag(input_body, "timeout_seconds")
+    if timeout:
+        try:
+            payload["timeout_seconds"] = int(timeout.strip())
+        except ValueError:
+            raise ActionParseError(
+                f"exec action <timeout_seconds> must be an integer, got '{timeout.strip()}'.",
+                raw_text=raw_llm_output,
+            )
+
+    args_body = _extract_tag(input_body, "script_args")
+    if args_body is not None and args_body.strip():
+        payload["script_args"] = _extract_arg_list(args_body)
+
+    return payload
+
+
+def _parse_delegate_input(input_body: str) -> dict:
+    payload: dict = {}
+    for field_name in ("role", "role_description", "objective", "context"):
+        value = _extract_tag(input_body, field_name)
+        if value is not None:
+            payload[field_name] = value
+    return payload
 
 
 # --------------------------------------------------------------------------- #
@@ -209,4 +297,3 @@ def _validate_delegate_payload(payload: dict, raw_text: str) -> None:
             "delegate action requires a non-empty 'objective' field.",
             raw_text=raw_text,
         )
-

@@ -6,17 +6,6 @@ import re
 import sys
 from typing import Any, Optional, TextIO
 
-_JSON_ESCAPE_MAP = {
-    '"': '"',
-    "\\": "\\",
-    "/": "/",
-    "b": "\b",
-    "f": "\f",
-    "n": "\n",
-    "r": "\r",
-    "t": "\t",
-}
-
 _EXEC_PAYLOAD_ORDER = (
     "job_name",
     "code_type",
@@ -126,56 +115,36 @@ def iter_exec_payload_items(payload: dict[str, Any]) -> list[tuple[str, Any]]:
 
 
 def extract_streaming_response(partial_text: str) -> Optional[str]:
-    """Extract the 'response' value from a partial JSON stream.
+    """Extract the <response> body from a partial XML stream.
 
-    Used to stream tokens to the UI during generation. Returns the
-    extracted response text so far, or None if the key hasn't appeared yet.
+    Used to stream tokens to the UI during generation. Returns the response
+    text accumulated so far, or None if the opening ``<response>`` tag hasn't
+    appeared yet. The closing ``</response>`` tag (if reached) ends the
+    extraction; otherwise everything after the opening tag is returned with
+    one leading newline trimmed for display readability.
+
+    Tag bodies are raw text — no escape decoding is performed. If the body
+    is wrapped in ``<![CDATA[...]]>``, the wrapper is stripped before
+    returning.
     """
-    # Look for "response": "... pattern
-    marker = '"response"'
-    idx = partial_text.find(marker)
-    if idx == -1:
+    open_idx = partial_text.find("<response>")
+    if open_idx == -1:
         return None
+    body_start = open_idx + len("<response>")
+    close_idx = partial_text.find("</response>", body_start)
+    body = partial_text[body_start:close_idx] if close_idx != -1 else partial_text[body_start:]
 
-    # Skip past the key and colon
-    after_key = partial_text[idx + len(marker) :]
-    colon_idx = after_key.find(":")
-    if colon_idx == -1:
-        return None
+    stripped = body.lstrip()
+    if stripped.startswith("<![CDATA["):
+        inner = stripped[len("<![CDATA["):]
+        end = inner.find("]]>")
+        body = inner if end == -1 else inner[:end]
+    elif body.startswith("\r\n"):
+        body = body[2:]
+    elif body.startswith("\n"):
+        body = body[1:]
 
-    after_colon = after_key[colon_idx + 1 :].lstrip()
-    if not after_colon or after_colon[0] != '"':
-        return None
-
-    # Extract and decode the partial JSON string value.
-    result_chars: list[str] = []
-    i = 1  # skip opening quote
-    while i < len(after_colon):
-        ch = after_colon[i]
-        if ch == "\\":
-            if i + 1 >= len(after_colon):
-                break
-            esc = after_colon[i + 1]
-            if esc in _JSON_ESCAPE_MAP:
-                result_chars.append(_JSON_ESCAPE_MAP[esc])
-                i += 2
-                continue
-            if esc == "u":
-                if i + 6 > len(after_colon):
-                    break
-                hex_value = after_colon[i + 2 : i + 6]
-                if not re.fullmatch(r"[0-9a-fA-F]{4}", hex_value):
-                    break
-                result_chars.append(chr(int(hex_value, 16)))
-                i += 6
-                continue
-            # Unknown or malformed escape; stop until more text arrives.
-            break
-        if ch == '"':
-            break
-        result_chars.append(ch)
-        i += 1
-    return "".join(result_chars) if result_chars else None
+    return body if body else None
 
 
 # --------------------------------------------------------------------------- #

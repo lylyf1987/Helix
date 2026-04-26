@@ -439,13 +439,13 @@ def test_host_process_message():
         # Mock the model to return a simple chat response
         def mock_generate(messages, *, chunk_callback=None, **_kwargs):
             if chunk_callback is not None:
-                for piece in ('<output>{"response": "Hello ', 'from the agent!", '):
+                for piece in ("<output>\n<response>Hello ", "from the agent!"):
                     chunk_callback(piece)
             return (
-                '<output>'
-                '{"response": "Hello from the agent!", '
-                '"next_action": "chat", "action_input": {}}'
-                '</output>'
+                """<output>
+<response>Hello from the agent!</response>
+<next_action>chat</next_action>
+</output>"""
             )
 
         mock_generate = MagicMock(side_effect=mock_generate)
@@ -488,10 +488,10 @@ def test_host_process_message_saves_named_session():
         host = _make_host(workspace, session_id="active-1")
 
         mock_generate = MagicMock(return_value=(
-            '<output>'
-            '{"response": "Saved response", '
-            '"next_action": "chat", "action_input": {}}'
-            '</output>'
+            """<output>
+<response>Saved response</response>
+<next_action>chat</next_action>
+</output>"""
         ))
         host._model.generate = mock_generate
 
@@ -528,23 +528,27 @@ def test_host_process_exec():
             call_count[0] += 1
             if call_count[0] == 1:
                 if chunk_callback is not None:
-                    for piece in ('<output>{"response": "Let ', 'me check.", '):
+                    for piece in ("<output>\n<response>Let ", "me check."):
                         chunk_callback(piece)
                 return (
-                    '<output>'
-                    '{"response": "Let me check.", '
-                    '"next_action": "exec", "action_input": {'
-                    '"job_name": "test-exec", "code_type": "bash", '
-                    '"script": "echo test-output"}}'
-                    '</output>'
+                    """<output>
+<response>Let me check.</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>test-exec</job_name>
+<code_type>bash</code_type>
+<script>echo test-output</script>
+</action_input>
+</output>"""
                 )
             if chunk_callback is not None:
-                for piece in ('<output>{"response": "Do', 'ne!", '):
+                for piece in ("<output>\n<response>Do", "ne!"):
                     chunk_callback(piece)
             return (
-                '<output>'
-                '{"response": "Done!", "next_action": "chat", "action_input": {}}'
-                '</output>'
+                """<output>
+<response>Done!</response>
+<next_action>chat</next_action>
+</output>"""
             )
 
         host._model.generate = mock_generate
@@ -605,18 +609,18 @@ def test_host_process_message_discards_parse_failed_preview():
                     '</output>'
                 )
                 if chunk_callback is not None:
-                    for piece in ('<output>{"response": "Discard ', 'this preview", '):
+                    for piece in ("<output>\n<response>Discard ", "this preview"):
                         chunk_callback(piece)
                 return bad
 
             good = (
-                '<output>'
-                '{"response": "Keep this final answer", '
-                '"next_action": "chat", "action_input": {}}'
-                '</output>'
+                """<output>
+<response>Keep this final answer</response>
+<next_action>chat</next_action>
+</output>"""
             )
             if chunk_callback is not None:
-                for piece in ('<output>{"response": "Keep ', 'this final answer", '):
+                for piece in ("<output>\n<response>Keep ", "this final answer"):
                     chunk_callback(piece)
             return good
 
@@ -786,28 +790,40 @@ def test_host_effort_forwarded_to_provider():
 
 
 def test_streaming_extractor():
-    partial = '{"response": "Hello wor'
+    """Partial body before </response> close: return the accumulated text."""
+    partial = "<output>\n<response>Hello wor"
     result = extract_streaming_response(partial)
     assert result == "Hello wor"
     print("  Streaming extractor OK")
 
 
-def test_streaming_extractor_decodes_newlines():
-    partial = '{"response": "Hello\\nworld"}'
+def test_streaming_extractor_full_response():
+    """Once </response> arrives, extraction stops at the close tag."""
+    partial = "<output>\n<response>Hello world</response>\n<next_action>chat</next_action>\n</output>"
     result = extract_streaming_response(partial)
-    assert result == "Hello\nworld"
-    print("  Streaming extractor newline decode OK")
+    assert result == "Hello world"
+    print("  Streaming extractor (full response) OK")
 
 
-def test_streaming_extractor_handles_partial_escape():
-    partial = '{"response": "Hello\\'
+def test_streaming_extractor_preserves_newlines():
+    """Newlines inside the body are returned raw — no JSON unescape."""
+    partial = "<output>\n<response>line one\nline two"
     result = extract_streaming_response(partial)
-    assert result == "Hello"
-    print("  Streaming extractor partial escape OK")
+    assert result == "line one\nline two"
+    print("  Streaming extractor preserves newlines OK")
+
+
+def test_streaming_extractor_strips_cdata_wrapper():
+    """If the body opens with CDATA, the wrapper is stripped before display."""
+    partial = "<output>\n<response><![CDATA[<b>raw</b>"
+    result = extract_streaming_response(partial)
+    assert result == "<b>raw</b>"
+    print("  Streaming extractor strips CDATA OK")
 
 
 def test_streaming_extractor_not_yet():
-    result = extract_streaming_response('{"next_action": ')
+    """Before <response> arrives, return None."""
+    result = extract_streaming_response("<output>\n<next_action>")
     assert result is None
     print("  Streaming extractor (not yet) OK")
 
@@ -841,7 +857,7 @@ def test_streaming_display_content_after_reasoning_closes_dim():
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("hmm")
-    display.on_content('{"response": "XYZ_FINAL"}')
+    display.on_content("<output><response>XYZ_FINAL</response>")
     written = buf.getvalue()
     assert "\033[2mthinking> hmm" in written
     # Closer is reset + newline + blank line (separates from badge block)
@@ -857,7 +873,7 @@ def test_streaming_display_commit_closes_dim_if_active():
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("thinking text")
-    display.on_content('{"response": "final answer"}')
+    display.on_content("<output><response>final answer</response>")
     display.commit()
     written = buf.getvalue()
     assert "\033[2mthinking> thinking text" in written

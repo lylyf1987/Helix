@@ -41,7 +41,10 @@ def test_state_creation():
 
 
 def test_parse_chat():
-    raw = '<output>{"response": "Hi!", "next_action": "chat", "action_input": {}}</output>'
+    raw = """<output>
+<response>Hi!</response>
+<next_action>chat</next_action>
+</output>"""
     a = parse_action(raw)
     assert a.type == "chat"
     assert a.response == "Hi!"
@@ -50,14 +53,25 @@ def test_parse_chat():
 
 
 def test_parse_think():
-    raw = '<output>{"response": "Thinking...", "next_action": "think", "action_input": {}}</output>'
+    raw = """<output>
+<response>Thinking...</response>
+<next_action>think</next_action>
+</output>"""
     a = parse_action(raw)
     assert a.type == "think"
     print("  Parse think OK")
 
 
 def test_parse_exec():
-    raw = '<output>{"response": "Running", "next_action": "exec", "action_input": {"job_name": "test", "code_type": "bash", "script": "echo hello"}}</output>'
+    raw = """<output>
+<response>Running</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>test</job_name>
+<code_type>bash</code_type>
+<script>echo hello</script>
+</action_input>
+</output>"""
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["code_type"] == "bash"
@@ -66,28 +80,80 @@ def test_parse_exec():
 
 
 def test_parse_exec_script_args_array():
-    raw = '<output>{"response": "Running", "next_action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": ["--query", "hello", "--limit", "5"]}}</output>'
+    raw = """<output>
+<response>Running</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>test</job_name>
+<code_type>python</code_type>
+<script_path>skills/x.py</script_path>
+<script_args>
+  <arg>--query</arg>
+  <arg>hello</arg>
+  <arg>--limit</arg>
+  <arg>5</arg>
+</script_args>
+</action_input>
+</output>"""
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["script_args"] == ["--query", "hello", "--limit", "5"]
     print("  Parse exec script_args array OK")
 
 
-def test_parse_exec_script_args_string():
-    raw = '<output>{"response": "Running", "next_action": "exec", "action_input": {"job_name": "test", "code_type": "python", "script_path": "skills/x.py", "script_args": "--query \\"hello\\" --limit 5"}}</output>'
-    a = parse_action(raw)
-    assert a.type == "exec"
-    assert a.payload["script_args"] == '--query "hello" --limit 5'
-    print("  Parse exec script_args string OK")
-
-
 def test_parse_delegate():
-    raw = '<output>{"response": "Delegating", "next_action": "delegate", "action_input": {"role": "researcher", "objective": "Find info"}}</output>'
+    raw = """<output>
+<response>Delegating</response>
+<next_action>delegate</next_action>
+<action_input>
+<role>researcher</role>
+<objective>Find info</objective>
+</action_input>
+</output>"""
     a = parse_action(raw)
     assert a.type == "delegate"
     assert a.payload["role"] == "researcher"
     print("  Parse delegate OK")
 
+
+
+def test_parse_exec_multiline_script_with_specials():
+    """Multi-line script with quotes, dollars, backslashes, braces parses
+    verbatim — no escaping required (this is the whole point of XML)."""
+    raw = """<output>
+<response>Run the heredoc</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>complex</job_name>
+<code_type>bash</code_type>
+<script>
+cat << EOF
+"hello" \\$world {brace}
+multi line
+EOF
+</script>
+</action_input>
+</output>"""
+    a = parse_action(raw)
+    assert a.payload["script"] == 'cat << EOF\n"hello" \\$world {brace}\nmulti line\nEOF'
+    print("  Parse exec multi-line script with specials OK")
+
+
+def test_parse_exec_script_cdata_escapes_close_tag():
+    """A CDATA-wrapped <script> body lets the model emit a literal
+    </script> inside the script content."""
+    raw = """<output>
+<response>Generating HTML</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>html</job_name>
+<code_type>bash</code_type>
+<script><![CDATA[echo "<script>alert(1)</script>"]]></script>
+</action_input>
+</output>"""
+    a = parse_action(raw)
+    assert a.payload["script"] == 'echo "<script>alert(1)</script>"'
+    print("  Parse exec script CDATA escape hatch OK")
 
 
 def test_parse_error_missing_tags():
@@ -107,7 +173,10 @@ def test_parse_error_invalid_json():
 
 
 def test_parse_error_invalid_action():
-    raw = '<output>{"response": "Hi!", "next_action": "fly", "action_input": {}}</output>'
+    raw = """<output>
+<response>Hi!</response>
+<next_action>fly</next_action>
+</output>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -116,7 +185,13 @@ def test_parse_error_invalid_action():
 
 
 def test_parse_error_exec_missing_script():
-    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "bash"}}</output>'
+    raw = """<output>
+<response>R</response>
+<next_action>exec</next_action>
+<action_input>
+<code_type>bash</code_type>
+</action_input>
+</output>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -125,7 +200,15 @@ def test_parse_error_exec_missing_script():
 
 
 def test_parse_error_exec_both_script_and_path():
-    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_path": "/foo"}}</output>'
+    raw = """<output>
+<response>R</response>
+<next_action>exec</next_action>
+<action_input>
+<code_type>bash</code_type>
+<script>echo x</script>
+<script_path>/foo</script_path>
+</action_input>
+</output>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -133,17 +216,39 @@ def test_parse_error_exec_both_script_and_path():
         print("  Parse error (exec both script+path) OK")
 
 
-def test_parse_error_exec_invalid_script_args_type():
-    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "python", "script_path": "skills/x.py", "script_args": {"bad": true}}}</output>'
+def test_parse_error_exec_script_args_empty_arg():
+    """An empty <arg></arg> child is invalid — args must be non-empty strings."""
+    raw = """<output>
+<response>R</response>
+<next_action>exec</next_action>
+<action_input>
+<code_type>python</code_type>
+<script_path>skills/x.py</script_path>
+<script_args>
+<arg>--flag</arg>
+<arg></arg>
+</script_args>
+</action_input>
+</output>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
     except ActionParseError:
-        print("  Parse error (exec invalid script_args type) OK")
+        print("  Parse error (exec script_args empty arg) OK")
 
 
 def test_parse_error_exec_script_args_with_script():
-    raw = '<output>{"response": "R", "next_action": "exec", "action_input": {"code_type": "bash", "script": "echo x", "script_args": ["--bad"]}}</output>'
+    raw = """<output>
+<response>R</response>
+<next_action>exec</next_action>
+<action_input>
+<code_type>bash</code_type>
+<script>echo x</script>
+<script_args>
+  <arg>--bad</arg>
+</script_args>
+</action_input>
+</output>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -152,7 +257,13 @@ def test_parse_error_exec_script_args_with_script():
 
 
 def test_parse_error_delegate_missing_role():
-    raw = '<output>{"response": "D", "next_action": "delegate", "action_input": {"objective": "o"}}</output>'
+    raw = """<output>
+<response>D</response>
+<next_action>delegate</next_action>
+<action_input>
+<objective>o</objective>
+</action_input>
+</output>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -161,7 +272,14 @@ def test_parse_error_delegate_missing_role():
 
 
 def test_sub_agent_cannot_delegate():
-    raw = '<output>{"response": "D", "next_action": "delegate", "action_input": {"role": "r", "objective": "o"}}</output>'
+    raw = """<output>
+<response>D</response>
+<next_action>delegate</next_action>
+<action_input>
+<role>r</role>
+<objective>o</objective>
+</action_input>
+</output>"""
     try:
         parse_action(raw, allowed_actions=ALLOWED_SUB_ACTIONS)
         assert False, "Should have raised"
@@ -357,7 +475,10 @@ def test_run_loop_notifies_on_compaction_start():
 
     class ChatAgentModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return '<output>{"response": "done", "next_action": "chat", "action_input": {}}</output>'
+            return """<output>
+<response>done</response>
+<next_action>chat</next_action>
+</output>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), token_limit=200, keep_last_k=2,
@@ -420,7 +541,10 @@ def test_run_loop_chat():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return '<output>{"response": "Hello user!", "next_action": "chat", "action_input": {}}</output>'
+            return """<output>
+<response>Hello user!</response>
+<next_action>chat</next_action>
+</output>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -440,7 +564,10 @@ def test_run_loop_reasoning_tokens_never_enter_history():
             if reasoning_callback is not None:
                 reasoning_callback("INTERNAL_THOUGHTS_SHOULD_NEVER_LEAK ")
                 reasoning_callback("AND_NEITHER_SHOULD_THIS")
-            final = '<output>{"response": "Clean answer", "next_action": "chat", "action_input": {}}</output>'
+            final = """<output>
+<response>Clean answer</response>
+<next_action>chat</next_action>
+</output>"""
             if chunk_callback is not None:
                 chunk_callback(final)
             return final
@@ -478,8 +605,14 @@ def test_run_loop_think_then_chat():
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             if call_count[0] == 1:
-                return '<output>{"response": "Let me think...", "next_action": "think", "action_input": {}}</output>'
-            return '<output>{"response": "Done thinking!", "next_action": "chat", "action_input": {}}</output>'
+                return """<output>
+<response>Let me think...</response>
+<next_action>think</next_action>
+</output>"""
+            return """<output>
+<response>Done thinking!</response>
+<next_action>chat</next_action>
+</output>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -502,7 +635,10 @@ def test_run_loop_parse_retry():
             call_count[0] += 1
             if call_count[0] == 1:
                 return "bad output no tags"
-            return '<output>{"response": "Fixed!", "next_action": "chat", "action_input": {}}</output>'
+            return """<output>
+<response>Fixed!</response>
+<next_action>chat</next_action>
+</output>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -529,12 +665,16 @@ def test_run_loop_parse_retry_observation_reflects_latest_error():
                 return "<output>not-valid-json</output>"              # invalid JSON
             if call_count[0] == 3:
                 return (
-                    '<output>{"response": "x", '
-                    '"next_action": "banana", "action_input": {}}</output>'
+                    """<output>
+<response>x</response>
+<next_action>banana</next_action>
+</output>"""
                 )                                                     # invalid next_action
             return (
-                '<output>{"response": "Finally fixed.", '
-                '"next_action": "chat", "action_input": {}}</output>'
+                """<output>
+<response>Finally fixed.</response>
+<next_action>chat</next_action>
+</output>"""
             )
 
     with tempfile.TemporaryDirectory() as td:
@@ -609,11 +749,15 @@ def test_run_loop_exec_denied_returns_control():
             call_count[0] += 1
             if call_count[0] == 1:
                 return (
-                    '<output>'
-                    '{"response": "Checking status.", '
-                    '"next_action": "exec", '
-                    '"action_input": {"job_name": "check-status", "code_type": "bash", "script": "echo x"}}'
-                    '</output>'
+                    """<output>
+<response>Checking status.</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>check-status</job_name>
+<code_type>bash</code_type>
+<script>echo x</script>
+</action_input>
+</output>"""
                 )
             raise AssertionError("run_loop should have unwound before a second agent turn")
 
@@ -661,11 +805,15 @@ def test_run_loop_exec_cancelled_returns_control():
             call_count[0] += 1
             if call_count[0] == 1:
                 return (
-                    '<output>'
-                    '{"response": "Checking status.", '
-                    '"next_action": "exec", '
-                    '"action_input": {"job_name": "check-status", "code_type": "bash", "script": "echo x"}}'
-                    '</output>'
+                    """<output>
+<response>Checking status.</response>
+<next_action>exec</next_action>
+<action_input>
+<job_name>check-status</job_name>
+<code_type>bash</code_type>
+<script>echo x</script>
+</action_input>
+</output>"""
                 )
             # Unreachable under the new semantics; if the test sees call 2
             # something went wrong with the unwind.
@@ -712,7 +860,10 @@ def test_run_loop_transient_error_retries_then_succeeds():
             call_count[0] += 1
             if call_count[0] == 1:
                 raise LLMTransientError("LLM HTTP 503: overloaded", status_code=503)
-            return '<output>{"response": "Recovered!", "next_action": "chat", "action_input": {}}</output>'
+            return """<output>
+<response>Recovered!</response>
+<next_action>chat</next_action>
+</output>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -802,7 +953,8 @@ if __name__ == "__main__":
     test_parse_think()
     test_parse_exec()
     test_parse_exec_script_args_array()
-    test_parse_exec_script_args_string()
+    test_parse_exec_multiline_script_with_specials()
+    test_parse_exec_script_cdata_escapes_close_tag()
     test_parse_delegate()
 
     print("\n=== Parse Errors ===")
@@ -811,7 +963,7 @@ if __name__ == "__main__":
     test_parse_error_invalid_action()
     test_parse_error_exec_missing_script()
     test_parse_error_exec_both_script_and_path()
-    test_parse_error_exec_invalid_script_args_type()
+    test_parse_error_exec_script_args_empty_arg()
     test_parse_error_exec_script_args_with_script()
     test_parse_error_delegate_missing_role()
     test_sub_agent_cannot_delegate()
