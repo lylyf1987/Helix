@@ -311,11 +311,13 @@ Do the same for `SKILL.md`, `host_adapter.py`, `scripts/prepare_model.py`, `scri
 
 This validates `model_spec.json`, provisions the per-backend venv at `~/.helix/services/local-model-service/venvs/{backend}/`, and fetches weights to `~/.helix/services/local-model-service/models/{repo_id}/`.
 
+`--workspace` is required for user-created skills — without it, `helix model download` only searches the package's bundled built-in skills and won't find the one you just wrote at `{workspace}/skills/{skill-name}/`.
+
 ```json
 {
   "job_name": "download-gen-skill-model",
   "code_type": "bash",
-  "script": "helix model download --skill {skill-name}"
+  "script": "helix model download --skill {skill-name} --workspace {workspace}"
 }
 ```
 
@@ -353,4 +355,5 @@ Run `prepare_model.py` (should complete without error on subsequent calls — th
 - `model_spec.json` must list every file needed in `download_manifest.required` — partial downloads are the most common deployment bug.
 - `host_adapter.py` must subclass `_BaseBackend`, export `create_adapter(**kwargs)`, and return `_ok(...)` or `_error(...)` from `handle()`. Any other return shape is an interface violation.
 - Sandbox scripts must print exactly one JSON object to stdout on success; stderr is for failures only.
-- After creating the skill, always run `helix model download --skill {name}` then restart `local-model-service` before using it.
+- The new skill's `SKILL.md` must include a `## Setup` section with the exact `helix model download --skill {skill-name} --workspace {workspace}` command for this skill, so a future reader (human or agent) can re-provision the model on a fresh machine without guessing the flags.
+- After creating the skill, always run `helix model download --skill {name} --workspace {workspace}` then restart `local-model-service` before using it.

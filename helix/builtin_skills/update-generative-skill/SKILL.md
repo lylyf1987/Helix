@@ -93,11 +93,13 @@ Rewrite the target file(s) with `Path.write_text`:
 
 ## Step 3a: Re-download weights (only if `model_spec.json` changed)
 
+`--workspace` is required for user-created skills — without it, `helix model download` only searches the package's bundled built-in skills.
+
 ```json
 {
   "job_name": "redownload-gen-skill-model",
   "code_type": "bash",
-  "script": "helix model download --skill {skill-name}"
+  "script": "helix model download --skill {skill-name} --workspace {workspace}"
 }
 ```
 
@@ -133,6 +135,7 @@ If smoke fails after an adapter edit, the most common causes are: forgot to rest
 
 - Always read the skill's existing state before editing.
 - Keep the frontmatter format: only `name` and `description`.
+- If the edit changed the skill name or its directory, update the `## Setup` section in the skill's `SKILL.md` so the documented `helix model download --skill {name} --workspace {workspace}` command stays accurate. If no Setup section exists, add one — it's required for user-created generative skills.
 - Consult the Change → Follow-up Matrix before reporting "done" — a correctly edited skill that wasn't followed by the right download/restart looks broken on the next call.
 - `host_adapter.py` must still subclass `_BaseBackend`, export `create_adapter(**kwargs)`, and return `_ok(...)` or `_error(...)` after every edit. Any other return shape is an interface violation.
 - If you edit `model_spec.json`'s `backend` to a new value, you're building a fresh venv on the next download — expect an extra ~5GB of disk and slower first install.
