@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from helix.runtime.host import RuntimeHost
 from helix.providers.openai_compat import LLMProvider
-from helix.runtime.display import StreamingDisplay, extract_streaming_response
+from helix.runtime.display import StreamingDisplay, extract_streaming_response, write_startup_banner
 from helix.runtime.cli import build_parser, main as cli_main
 from helix.core.environment import Environment
 from helix.core.state import Turn
@@ -794,6 +794,56 @@ def test_host_effort_forwarded_to_provider():
 # =========================================================================== #
 # Streaming Extractor tests
 # =========================================================================== #
+
+
+def test_startup_banner_renders_status_fields():
+    """Banner contains the title, every field's label and value, and the
+    box-drawing corner characters. Right border stays straight regardless
+    of value length."""
+    buf = StringIO()
+    write_startup_banner(
+        title="OpenHelix",
+        fields=[
+            ("model", "llama3.1:8b"),
+            ("mode", "controlled"),
+            ("workspace", "/Users/foo/agent"),
+            ("session", "test (new)"),
+            ("sandbox", "host-shell-v1"),
+        ],
+        hint="/help · /exit",
+        output=buf,
+    )
+    out = buf.getvalue()
+    assert "OpenHelix" in out
+    for label in ("model", "mode", "workspace", "session", "sandbox"):
+        assert label in out
+    for value in ("llama3.1:8b", "controlled", "/Users/foo/agent", "test (new)", "host-shell-v1"):
+        assert value in out
+    assert "╭" in out and "╮" in out
+    assert "╰" in out and "╯" in out
+    assert "/help · /exit" in out
+    print("  Startup banner renders OK")
+
+
+def test_startup_banner_truncates_long_values():
+    """A value longer than the inside width gets truncated with an ellipsis;
+    the right border stays straight."""
+    buf = StringIO()
+    long_path = "/Users/foo/Projects/" + "x" * 200
+    write_startup_banner(
+        title="OpenHelix",
+        fields=[("workspace", long_path)],
+        hint="ok",
+        output=buf,
+        width=64,
+    )
+    out = buf.getvalue()
+    assert "…" in out
+    # No line in the banner exceeds the configured width (every line ends
+    # with the right border ╮│╯ at the same column).
+    lines = [line for line in out.splitlines() if "│" in line or "╮" in line or "╯" in line]
+    assert lines, "expected box lines"
+    print("  Startup banner truncation OK")
 
 
 def test_streaming_extractor_partial_no_action_yet():

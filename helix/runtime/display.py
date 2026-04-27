@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from typing import Any, Optional, TextIO
 
@@ -79,6 +80,86 @@ def write_approval(text: str, output: Optional[TextIO] = None) -> None:
     """Write approval prompt with amber badge prefix."""
     stream = output if output is not None else sys.stdout
     _write_role_block("approval", text, stream)
+
+
+# --------------------------------------------------------------------------- #
+# Startup banner
+# --------------------------------------------------------------------------- #
+
+
+_BANNER_TITLE_ICON = "✻"
+_BANNER_LABEL_WIDTH = 11
+
+
+def _fit(value: str, width: int, kind: str = "url") -> str:
+    """Truncate ``value`` to fit in ``width`` columns using ``…`` as ellipsis.
+
+    ``kind="path"`` truncates at the *start* (``…/agent``) so the trailing
+    component (most informative for paths) stays visible. ``kind="url"``
+    truncates at the *end* (``https://api.de…``) so the scheme + host stay
+    visible. Width must be at least 1.
+    """
+    if len(value) <= width:
+        return value
+    if width <= 1:
+        return "…"
+    if kind == "path":
+        return "…" + value[-(width - 1):]
+    return value[: width - 1] + "…"
+
+
+def write_startup_banner(
+    title: str,
+    fields: list[tuple[str, str]],
+    hint: str,
+    output: Optional[TextIO] = None,
+    width: int = 64,
+) -> None:
+    """Render a Claude-Code-style box-drawn startup banner.
+
+    ``fields`` is an ordered list of ``(label, value)`` pairs — preserves the
+    intended display order without depending on dict insertion semantics.
+    Long values are middle-truncated to keep the right border straight: any
+    value containing a path separator is treated as path-like (truncated at
+    the start); other values are truncated at the end.
+    """
+    stream = output if output is not None else sys.stdout
+    inner = width - 2
+    border_h = "─" * inner
+
+    def _line(content: str = "") -> str:
+        # Pad the visible content to inner width (excludes ANSI escapes).
+        return f"{_DIM}│{_RESET}{content}{' ' * max(0, inner - _visible_len(content))}{_DIM}│{_RESET}\n"
+
+    parts: list[str] = []
+    parts.append(f"{_DIM}╭{border_h}╮{_RESET}\n")
+    title_text = f" {_BOLD}{_BANNER_TITLE_ICON} {title}{_RESET}"
+    parts.append(_line(title_text))
+    parts.append(_line())
+    for label, value in fields:
+        # margins (2 left + 1 right) + label column + space between label and value
+        avail = inner - 3 - _BANNER_LABEL_WIDTH - 1
+        kind = "path" if "/" in value else "url"
+        fitted = _fit(value, avail, kind=kind)
+        row = f"  {_BOLD}{label.ljust(_BANNER_LABEL_WIDTH)}{_RESET} {fitted}"
+        parts.append(_line(row))
+    parts.append(_line())
+    parts.append(_line(f"  {hint}"))
+    parts.append(f"{_DIM}╰{border_h}╯{_RESET}\n")
+
+    stream.write("".join(parts))
+    stream.flush()
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _visible_len(text: str) -> int:
+    """Return the on-screen width of ``text`` in monospace cells, ignoring
+    ANSI escape sequences. Counts each non-escape character as one cell —
+    sufficient for the banner's ASCII labels + values + the single sparkle
+    icon (which is approximately one cell in modern terminals)."""
+    return len(_ANSI_RE.sub("", text))
 
 
 # --------------------------------------------------------------------------- #

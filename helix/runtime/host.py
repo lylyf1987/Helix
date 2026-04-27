@@ -36,7 +36,7 @@ from ..services.local_model_service import discover as discover_lms
 from .loop import run_loop
 from . import sub_agent_meta
 from .approval import ApprovalPolicy
-from .display import StreamingDisplay, write_runtime
+from .display import StreamingDisplay, write_runtime, write_startup_banner
 from .debug import render_session_view_html, open_file_in_viewer
 
 
@@ -291,13 +291,19 @@ class RuntimeHost:
         Returns:
             Exit code (0 for normal exit).
         """
-        print(f"Agentic System — model={self._model.model}, mode={self._approval.mode}")
-        print(f"Workspace: {self.workspace}")
         state = "resumed" if self._session_loaded else "new"
-        print(f"Session: {self.session_id} ({state})")
-        print(f"Sandbox: {self._sandbox_executor.backend_name}")
-        print("Type /help for commands. Type /exit to quit.")
-        print("Multiline: Enter adds lines, Ctrl+D submits, Ctrl+C cancels.\n")
+        write_startup_banner(
+            title="OpenHelix",
+            fields=[
+                ("model", f"{self._model.model} ({self._model.endpoint_url})"),
+                ("mode", self._approval.mode),
+                ("workspace", str(self.workspace)),
+                ("session", f"{self.session_id} ({state})"),
+                ("sandbox", self._sandbox_executor.backend_name),
+            ],
+            hint="/help for commands · /exit to quit",
+        )
+        print("  Multiline: Enter adds lines, Ctrl+D submits, Ctrl+C cancels.\n")
 
         try:
             while True:
