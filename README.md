@@ -6,10 +6,10 @@ OpenHelix gives an LLM a real computer — a host-shell sandbox where it writes 
 
 ## Highlights
 
-- **Local by default.** Local LLM via Ollama or any OpenAI-compatible endpoint, local web search via SearXNG, local image/audio/video generation via the built-in model service (MLX and PyTorch). No API keys required for the default setup.
-- **Fully transparent.** Inspect the full conversation, the exact system prompt, the skills the agent has, the knowledge library, and the exact text sent to the LLM at any moment (`/view last_prompt`). Nothing is hidden.
-- **Extensible through skills.** A skill is just a `SKILL.md` file the agent reads and follows — no code required for most skills. For complex tasks, add scripts alongside. The agent creates new skills when it discovers reusable patterns.
-- **Self-evolving.** The agent documents what it learns into a library (global index → category catalog → document), so past learnings are reusable without vector databases or embeddings. Fork it, change it, extend it — every component has one job and every file is readable.
+- **Local by default.** Runs on a local LLM out of the box; any OpenAI-compatible endpoint also works. Web search and media generation are local services you opt into when you need them.
+- **Fully transparent.** Inspect the conversation, the system prompt, the skills the agent has, the knowledge library, and the exact text sent to the LLM at any moment. Nothing is hidden.
+- **Extensible through skills.** A skill is a `SKILL.md` file the agent reads and follows — no code required for most. For complex tasks, add scripts alongside. The agent creates new skills when it discovers reusable patterns.
+- **Self-evolving.** The agent documents what it learns into a hierarchical knowledge library — global index → category catalog → document. No vector DBs, no embeddings; everything is plain markdown you can read.
 
 ## The Control Law
 
@@ -31,11 +31,11 @@ The LLM is the **Agent**. The host-shell sandbox is its computer — the hands t
 pip install -e .
 ```
 
-Requires Python 3.10+. No Docker dependency — the exec sandbox runs on your host shell, and the bundled services (SearXNG, local model service) are managed as pip/venv subprocesses.
+Requires Python 3.10+.
 
-### 2. Your First Session
+### 2. Run your first session
 
-The fastest happy path is a local LLM via Ollama:
+The fastest path is a local LLM via Ollama:
 
 ```bash
 # One-time: pull a small local model
@@ -49,26 +49,11 @@ helix \
   --session-id my-first-session
 ```
 
-You land in an interactive prompt. Type a task in plain English and the agent will plan and execute it in the host-shell sandbox. Type `/help` for commands, `/exit` to quit.
+You land in an interactive prompt. Type a task in plain English; the agent will plan and execute it. Type `/help` for commands, `/exit` to quit.
 
-**About approval mode.** The agent always starts in controlled mode, which prompts you to approve every bash/python execution before it runs. You see the job name, the script, and an `[y/N/s/p/k/a]` menu — this is how OpenHelix keeps you in the loop on every concrete action the agent takes. Pick `a` at any prompt to switch the session to auto mode and stop being asked. You can also type `/mode auto` at the REPL at any time, and `/mode controlled` to switch back. Mode is intentionally not persisted across restarts — every session starts safe-by-default.
+**Approval mode.** Every session starts in *controlled* mode — the agent pauses for your approval before every bash/python execution. The prompt shows the job name, the script, and a menu of choices. Pick `a` at any prompt to switch the session to *auto* mode and stop being asked. You can also flip mode at the REPL with `/mode auto` or `/mode controlled`. Mode is intentionally not persisted across restarts; every session starts safe-by-default.
 
-### 3. Optional: Add Local Services
-
-```bash
-# Local web search
-helix start searxng
-
-# Local image / audio / video generation
-helix start local-model-service
-helix model download --skill generate-image
-helix model download --skill generate-audio
-helix model download --skill generate-video
-```
-
-`helix model download` fetches model weights from **[HuggingFace Hub](https://huggingface.co)** — this is currently the only supported source. Each generative skill's `model_spec.json` points at a HuggingFace repo slug like `author/model-name`. Set `HF_TOKEN` in your environment first if a model is gated or private.
-
-### 4. Alternative: Use a Hosted LLM
+### 3. Use a hosted LLM instead
 
 Any OpenAI-compatible endpoint works:
 
@@ -81,17 +66,34 @@ helix \
   --session-id research-01
 ```
 
+### 4. Add local services (optional)
+
+OpenHelix bundles two local services that unlock additional capabilities:
+
+```bash
+# Local web search (used by the search-online-context skill)
+helix start searxng
+
+# Local image / audio / video generation
+helix start local-model-service
+helix model download --skill generate-image
+helix model download --skill generate-audio
+helix model download --skill generate-video
+```
+
+`helix model download` fetches model weights from [HuggingFace Hub](https://huggingface.co). Each generative skill's `model_spec.json` points at a HuggingFace repo slug. Set `HF_TOKEN` in your environment first if a model is gated or private.
+
 ## What a Session Looks Like
 
 When you send a task, the agent:
 
-1. **Plans** — decides which skills apply and loads their `SKILL.md`.
+1. **Plans** — decides which skills apply and reads their `SKILL.md`.
 2. **Acts** — writes bash or python and runs it in the host-shell sandbox (subject to your approval in controlled mode).
 3. **Observes** — reads stdout/stderr, updates its plan, and continues.
-4. **Learns** — documents anything reusable into the knowledge library, optionally creates a new skill.
-5. **Resumes** — saves session state so you can pick up later with the same `--session-id`.
+4. **Learns** — documents anything reusable into the knowledge library; optionally creates a new skill.
+5. **Resumes** — saves session state, so you can pick up later with the same `--session-id`.
 
-Everything is inspectable. `/view last_prompt` shows the exact text sent to the LLM on the most recent turn. `/view observation` shows the recent turn trace. `/view workflow_summary` shows the compacted long-term memory. `/status` shows the session config. Nothing happens in secret.
+Everything is inspectable. `/view last_prompt` shows the exact text sent to the LLM on the most recent turn. `/view observation` shows the recent turn trace. `/view workflow_summary` shows the compacted long-term memory. `/status` shows the session config.
 
 ## Built-in Skills
 
@@ -112,7 +114,7 @@ Everything is inspectable. `/view last_prompt` shows the exact text sent to the 
 | `create-skill` | Create a new procedural skill (SKILL.md + optional scripts) |
 | `update-skill` | Update an existing procedural skill |
 | `create-generative-skill` | Create a new ML-backed skill (model_spec + host adapter + scripts) |
-| `update-generative-skill` | Update an existing generative skill (with re-download/restart flow) |
+| `update-generative-skill` | Update an existing generative skill |
 
 ### Web & media generation
 
@@ -128,16 +130,16 @@ Everything is inspectable. `/view last_prompt` shows the exact text sent to the 
 
 | Command | Purpose |
 |---|---|
-| `helix --endpoint-url URL --model MODEL --workspace PATH --session-id ID [--think enable\|disable] [--effort minimal\|low\|medium\|high]` | Start a session |
+| `helix --endpoint-url URL --model MODEL --workspace PATH --session-id ID [flags]` | Start a session |
 | `helix start searxng` | Start the SearXNG search service |
 | `helix start local-model-service` | Start the local model service |
 | `helix stop searxng \| local-model-service` | Stop a running service |
 | `helix status` | Show running services |
 | `helix model download --skill NAME` | Download model weights for a media-generation skill |
 
-Approval policy is set at runtime, not on the command line: every session starts in `controlled` mode (you approve each exec). Type `/mode auto` to stop being prompted; `/mode controlled` to re-enable. You can also pick `a` at any approval prompt to flip the session to auto on the spot.
+### Optional flags for `helix`
 
-`--think` and `--effort` shape how hard the model reasons. They're optional and independent; omit either to fall back to the server's default.
+`--think` and `--effort` shape how hard the model reasons. Both are optional and independent; omit either to fall back to the server's default.
 
 - **`--think enable|disable`** — binary thinking-mode toggle. Maps to the three common OpenAI-compatible field conventions so a single flag works across servers: `thinking.type` (DeepSeek, Z.ai/GLM), `think` (Ollama), and `chat_template_kwargs.enable_thinking` (vLLM/SGLang Qwen3). Providers that don't recognize a field ignore it.
 - **`--effort minimal|low|medium|high`** — reasoning-effort level, forwarded as `reasoning_effort`. Recognized by OpenAI (GPT-5/o-series), DeepSeek, and Gemini's OpenAI-compatible endpoint. Ignored by providers that don't support effort levels.
@@ -159,6 +161,7 @@ helix \
 |---|---|
 | `/help` | Show all commands |
 | `/status` | Show the session configuration |
+| `/mode` / `/mode auto\|controlled` | Show or switch the approval mode for this session |
 | `/view <field>` | Inspect core-agent state: `full_history`, `observation`, `workflow_summary`, or `last_prompt` |
 | `/view sub_agents` | List sub-agents created in this session |
 | `/view <field> <role>` | Inspect a specific sub-agent's state by role |
