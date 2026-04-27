@@ -374,7 +374,7 @@ def _delegate(
             sub_state_path = state_root / "sub_agents" / f"{role}.json"
             sub_env.save_session(
                 sub_state_path,
-                extra_fields={"last_prompt": getattr(sub_agent, "last_prompt", "")},
+                extra_fields={"last_prompt": sub_agent.last_prompt},
             )
             sub_agent_meta.update(state_root, role, role_description)
 

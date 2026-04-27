@@ -459,13 +459,13 @@ class RuntimeHost:
         field: str,
         session_path: Path,
         view_id: str,
-        view_filename: str,
         description: str,
     ) -> str:
         """Read a JSON session file, render a field-specific HTML view, and open it.
 
         ``description`` is a short lowercase noun ("session view",
-        "sub-agent view") used in the success message.
+        "sub-agent view") used in the success message. The view filename is
+        derived from ``view_id`` + ``field``.
         """
         raw_session = self._read_session_payload(session_path)
         if raw_session is None:
@@ -483,7 +483,7 @@ class RuntimeHost:
 
         view_dir = self.state_root / "views"
         view_dir.mkdir(parents=True, exist_ok=True)
-        view_path = (view_dir / view_filename).resolve()
+        view_path = (view_dir / f"{view_id}.{field}.html").resolve()
         view_path.write_text(html, encoding="utf-8")
 
         if open_file_in_viewer(view_path):
@@ -497,7 +497,6 @@ class RuntimeHost:
             field=field,
             session_path=self.session_state_path,
             view_id=self.session_id,
-            view_filename=f"{self.session_id}.{field}.html",
             description="session view",
         )
 
@@ -527,7 +526,6 @@ class RuntimeHost:
             field=field,
             session_path=sub_state_path,
             view_id=f"{self.session_id}.sub_agent.{role}",
-            view_filename=f"{self.session_id}.sub_agent.{role}.{field}.html",
             description="sub-agent view",
         )
 
@@ -535,7 +533,7 @@ class RuntimeHost:
         """Persist session state when a named session is active."""
         self._env.save_session(
             self.session_state_path,
-            extra_fields={"last_prompt": getattr(self._agent, "last_prompt", "")}
+            extra_fields={"last_prompt": self._agent.last_prompt}
         )
 
     def _session_state(self) -> str:
