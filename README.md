@@ -83,17 +83,21 @@ helix model download --skill generate-video
 
 `helix model download` fetches model weights from [HuggingFace Hub](https://huggingface.co). Each generative skill's `model_spec.json` points at a HuggingFace repo slug. Set `HF_TOKEN` in your environment first if a model is gated or private.
 
-## What a Session Looks Like
+## How the agent solves a task
 
-When you send a task, the agent:
+The runtime loop above is the *mechanic* — what happens on every turn. The *strategy* — what the agent does across turns to actually solve a task — is a seven-step procedure baked into the system prompt:
 
-1. **Plans** — decides which skills apply and reads their `SKILL.md`.
-2. **Acts** — writes bash or python and runs it in the host-shell sandbox (subject to your approval in controlled mode).
-3. **Observes** — reads stdout/stderr, updates its plan, and continues.
-4. **Learns** — documents anything reusable into the knowledge library; optionally creates a new skill.
-5. **Resumes** — saves session state, so you can pick up later with the same `--session-id`.
+1. **Understand** the request.
+2. **Gather context** — check existing skills, knowledge, and workspace state.
+3. **Plan** the approach.
+4. **Act** — prefer existing skills; write inline scripts when no skill fits.
+5. **Verify** the results.
+6. **Reflect** — if the session produced something reusable, create a skill or knowledge document before returning control.
+7. **Report** the outcome to you via `chat`.
 
-Everything is inspectable. `/view last_prompt` shows the exact text sent to the LLM on the most recent turn. `/view observation` shows the recent turn trace. `/view workflow_summary` shows the compacted long-term memory. `/status` shows the session config.
+Each step is one or more iterations of the loop. You can audit the exact text governing the agent at any moment with `/view last_prompt`.
+
+**Inspectability.** `/view observation` shows the recent turn trace. `/view workflow_summary` shows the compacted long-term memory. `/status` shows the session config. Session state is saved automatically — restart with the same `--session-id` to resume.
 
 ## Built-in Skills
 
