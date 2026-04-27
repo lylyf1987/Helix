@@ -108,6 +108,17 @@ def _fit(value: str, width: int, kind: str = "url") -> str:
     return value[: width - 1] + "…"
 
 
+def clear_screen(output: Optional[TextIO] = None) -> None:
+    """Clear the visible terminal viewport and move the cursor to home.
+
+    Scrollback is intentionally preserved so the user can scroll up to see
+    prior shell context if they need it.
+    """
+    stream = output if output is not None else sys.stdout
+    stream.write("\033[2J\033[H")
+    stream.flush()
+
+
 def write_startup_banner(
     title: str,
     fields: list[tuple[str, str]],

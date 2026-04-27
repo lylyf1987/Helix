@@ -36,7 +36,7 @@ from ..services.local_model_service import discover as discover_lms
 from .loop import run_loop
 from . import sub_agent_meta
 from .approval import ApprovalPolicy
-from .display import StreamingDisplay, write_runtime, write_startup_banner
+from .display import StreamingDisplay, clear_screen, write_runtime, write_startup_banner
 from .debug import render_session_view_html, open_file_in_viewer
 
 
@@ -291,6 +291,7 @@ class RuntimeHost:
         Returns:
             Exit code (0 for normal exit).
         """
+        clear_screen()
         state = "resumed" if self._session_loaded else "new"
         write_startup_banner(
             title="OpenHelix",
