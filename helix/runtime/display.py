@@ -242,11 +242,11 @@ class StreamingDisplay:
         self._printed_to = up_to
 
     def _flush_remaining(self) -> None:
-        """Drain any held-back content (the trailing 7-char lookahead).
+        """Drain any held-back content (the trailing 12-char lookahead).
 
-        Called at end-of-turn when no <next_action> arrived to release the holdback
-        on its own. Without this, the last 7 chars of the model's reply would
-        be silently dropped from the UI.
+        Called at end-of-turn when no <next_action> arrived to release the
+        holdback on its own. Without this, the last 12 chars of the model's
+        reply would be silently dropped from the UI.
         """
         if self._in_action:
             return

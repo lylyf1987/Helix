@@ -199,18 +199,18 @@ def parse_action(
 
 
 # --------------------------------------------------------------------------- #
-# action_input parsers
+# Action body parsers
 # --------------------------------------------------------------------------- #
 
 
-def _parse_exec_input(input_body: str, raw_llm_output: str) -> dict:
+def _parse_exec_input(body: str, raw_llm_output: str) -> dict:
     payload: dict = {}
     for field_name in ("job_name", "code_type", "script", "script_path"):
-        value = _extract_tag(input_body, field_name)
+        value = _extract_tag(body, field_name)
         if value is not None:
             payload[field_name] = value
 
-    timeout = _extract_tag(input_body, "timeout_seconds")
+    timeout = _extract_tag(body, "timeout_seconds")
     if timeout:
         try:
             payload["timeout_seconds"] = int(timeout.strip())
@@ -220,17 +220,17 @@ def _parse_exec_input(input_body: str, raw_llm_output: str) -> dict:
                 raw_text=raw_llm_output,
             )
 
-    args_body = _extract_tag(input_body, "script_args")
+    args_body = _extract_tag(body, "script_args")
     if args_body is not None and args_body.strip():
         payload["script_args"] = _extract_arg_list(args_body)
 
     return payload
 
 
-def _parse_delegate_input(input_body: str) -> dict:
+def _parse_delegate_input(body: str) -> dict:
     payload: dict = {}
     for field_name in ("role", "role_description", "objective", "context"):
-        value = _extract_tag(input_body, field_name)
+        value = _extract_tag(body, field_name)
         if value is not None:
             payload[field_name] = value
     return payload
@@ -242,7 +242,7 @@ def _parse_delegate_input(input_body: str) -> dict:
 
 
 def _validate_exec_payload(payload: dict, raw_text: str) -> None:
-    """Validate exec action_input has required fields."""
+    """Validate exec payload has required fields."""
     code_type = str(payload.get("code_type", "")).strip().lower()
     if code_type not in ("bash", "python"):
         raise ActionParseError(
@@ -283,7 +283,7 @@ _ROLE_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def _validate_delegate_payload(payload: dict, raw_text: str) -> None:
-    """Validate delegate action_input has required fields."""
+    """Validate delegate payload has required fields."""
     role = str(payload.get("role", "")).strip()
     if not role:
         raise ActionParseError(
