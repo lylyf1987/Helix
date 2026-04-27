@@ -278,20 +278,3 @@ def test_builtin_skill_files_exist():
 # =========================================================================== #
 # Runner
 # =========================================================================== #
-
-
-if __name__ == "__main__":
-    print("=== Skills Integration (Builtin Skills) ===")
-    test_real_skill_loading()
-    test_real_skill_metadata_fields()
-
-    print("\n=== Bootstrap ===")
-    test_bootstrap_skills()
-    test_bootstrap_prunes_renamed_packaged_skills_but_keeps_user_skills()
-    test_bootstrapped_prompt_builder()
-
-    print("\n=== Full Pipeline ===")
-    test_full_pipeline_with_skill_exec()
-    test_builtin_skill_files_exist()
-
-    print("\n✅ All Phase 4 tests passed!")

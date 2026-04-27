@@ -181,11 +181,3 @@ def test_analyze_image_rejects_empty_response(monkeypatch):
         assert code == 1
         assert out["status"] == "error"
         assert out["error_code"] == "image_analysis_failed"
-
-
-if __name__ == "__main__":
-    test_analyze_image_local_path_success()  # type: ignore[misc]
-    test_analyze_image_downloads_remote_image()  # type: ignore[misc]
-    test_analyze_image_reports_unavailable_service()  # type: ignore[misc]
-    test_analyze_image_rejects_empty_response()  # type: ignore[misc]
-    print("\n✅ All analyze-image script tests passed!")

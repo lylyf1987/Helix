@@ -511,20 +511,3 @@ def _print_messages_summary(messages: list[dict]):
 # =========================================================================== #
 # Main
 # =========================================================================== #
-
-
-if __name__ == "__main__":
-    print("=" * 72)
-    print("  SUB-AGENT DELEGATION SIMULATION")
-    print("  Testing core-agent <-> sub-agent communication flows")
-    print("=" * 72)
-
-    run_simulation_scenario_1()
-    run_simulation_scenario_2()
-    run_simulation_scenario_3()
-    run_simulation_scenario_4()
-    run_simulation_scenario_5()
-
-    print("\n" + "=" * 72)
-    print("  ALL SIMULATION SCENARIOS PASSED!")
-    print("=" * 72)

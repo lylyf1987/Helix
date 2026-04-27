@@ -135,16 +135,3 @@ def test_prompt_shows_outside_write_warning():
         print("  prompt shows outside write warning OK")
     finally:
         approval_mod.write_approval = original_write_approval
-
-
-if __name__ == "__main__":
-    print("=== approval: outside-workspace write detection ===")
-    test_detect_bash_redirect_outside_workspace()
-    test_detect_bash_rm_outside_workspace()
-    test_detect_python_open_write_outside_workspace()
-    test_detect_python_pathlib_write_outside_workspace()
-    test_detect_ignores_relative_paths()
-    test_detect_ignores_workspace_scoped_absolute_paths()
-    test_detect_read_only_commands_not_flagged()
-    test_prompt_shows_outside_write_warning()
-    print("\n✅ All outside-write detection tests passed!")

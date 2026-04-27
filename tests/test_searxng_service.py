@@ -229,20 +229,3 @@ def test_start_full_flow_writes_state_with_pid():
 # --------------------------------------------------------------------------- #
 # Runner
 # --------------------------------------------------------------------------- #
-
-
-if __name__ == "__main__":
-    print("=== searxng service ===")
-    test_pid_alive_returns_true_for_current_process()
-    test_pid_alive_returns_false_for_nonexistent_pid()
-    test_discover_returns_none_when_no_state_file()
-    test_discover_unlinks_state_with_dead_pid()
-    test_discover_unlinks_legacy_docker_state()
-    test_discover_returns_state_when_pid_alive()
-    test_stop_is_noop_when_no_state()
-    test_stop_removes_state_file_for_dead_pid()
-    test_ensure_source_skips_when_git_dir_exists()
-    test_ensure_venv_skips_when_python_exists()
-    test_start_reuses_existing_state_when_running()
-    test_start_full_flow_writes_state_with_pid()
-    print("\n✅ All searxng service tests passed!")

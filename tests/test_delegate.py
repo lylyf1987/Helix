@@ -565,28 +565,3 @@ def test_delegate_without_state_root_still_works():
 # =========================================================================== #
 # Runner
 # =========================================================================== #
-
-
-if __name__ == "__main__":
-    print("=== Delegation Guards ===")
-    test_delegate_no_model()
-    test_delegate_sub_agent_cannot_delegate()
-
-    print("\n=== Basic Delegation ===")
-    test_delegate_basic()
-    test_delegate_shares_parent_workspace()
-
-    print("\n=== Full Delegation Loop ===")
-    test_full_delegation_loop()
-    test_delegate_with_exec_in_sub_agent()
-    test_sub_agent_sigint_propagates_past_delegate()
-
-    print("\n=== Sub-Agent State Persistence ===")
-    test_delegate_persists_and_restores_state()
-    test_delegate_new_role_starts_fresh()
-    test_delegate_meta_registry_updated()
-    test_delegate_role_description_updates_meta()
-    test_delegate_mode_propagates_via_shared_policy()
-    test_delegate_without_state_root_still_works()
-
-    print("\n✅ All delegation tests passed!")

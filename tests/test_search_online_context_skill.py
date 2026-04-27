@@ -132,12 +132,3 @@ def test_combined_phase_ok():
     finally:
         combined_phase.search_searxng = original_search
         combined_phase.fetch_urls = original_fetch
-
-
-if __name__ == "__main__":
-    print("=== Search Online Context Skill ===")
-    test_skill_md_declares_multi_mode()
-    test_search_phase_ok()
-    test_fetch_phase_ok()
-    test_combined_phase_ok()
-    print("\n✅ All search-online-context skill tests passed!")

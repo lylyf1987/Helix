@@ -475,30 +475,3 @@ def test_prompt_builder_no_prompts():
 # =========================================================================== #
 # Runner
 # =========================================================================== #
-
-
-if __name__ == "__main__":
-    print("=== Provider Initialization ===")
-    test_llm_provider_default_init()
-    test_llm_provider_custom_init()
-    test_llm_provider_builds_endpoint()
-    test_provider_satisfies_protocol()
-
-    print("\n=== Provider Error Classification ===")
-    test_llm_provider_stream_timeout_raises_transient_error()
-    test_llm_provider_stream_disconnect_raises_transient_error()
-    test_llm_provider_429_raises_transient_with_retry_after()
-    test_llm_provider_401_raises_permanent_error()
-
-    print("\n=== Skill Loader ===")
-    test_skill_loader()
-    test_skill_loader_empty()
-    test_skill_helpers()
-
-    print("\n=== Prompt Builder ===")
-    test_prompt_builder()
-    test_agent_rebuilds_prompt_from_updated_workspace_skills()
-    test_prompt_builder_unknown_role()
-    test_prompt_builder_no_prompts()
-
-    print("\n✅ All Phase 3 tests passed!")

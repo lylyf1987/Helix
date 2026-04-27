@@ -439,34 +439,3 @@ def test_environment_integration():
         assert "Job 'unnamed_job' succeeded." in turn.content, f"turn.content was: {turn.content!r}"
         assert "integrated bash" in turn.content, f"turn.content was: {turn.content!r}"
         print("  Environment integration OK")
-
-
-if __name__ == "__main__":
-    print("=== Sandbox Execution ===")
-    test_sandbox_bash_execution()
-    test_sandbox_python_execution()
-    test_sandbox_failure_exit_code()
-    test_sandbox_invalid_input()
-    test_sandbox_formats_json_stdout_readably()
-    test_sandbox_wraps_stderr_readably()
-
-    print("\n=== Approval Policy ===")
-    test_approval_policy_auto_mode()
-    test_approval_policy_controlled_allow_once()
-    test_approval_policy_controlled_allow_session()
-    test_approval_policy_pattern_mode()
-    test_approval_policy_pattern_mode_rejects_script_path()
-    test_approval_policy_controlled_deny()
-    test_approval_policy_a_switches_to_auto_and_approves()
-    test_approval_policy_uses_injected_prompt_instead_of_raw_input()
-    test_approval_policy_keyboard_interrupt_cancels()
-    test_approval_prompt_prints_separator_before_input()
-    test_approval_prompt_shows_timeout_seconds_and_job_name()
-    test_approval_policy_exact_match_includes_timeout_seconds()
-    test_format_agent_record_includes_all_exec_payload_fields()
-    test_approval_policy_non_exec_passthrough()
-
-    print("\n=== Environment Integration ===")
-    test_environment_integration()
-
-    print("\n✅ All Runtime/Phase 2 tests passed!")

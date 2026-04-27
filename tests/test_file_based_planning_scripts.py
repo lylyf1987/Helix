@@ -103,11 +103,3 @@ def test_session_catchup_reads_from_output_dir():
         assert code == 0, f"unexpected exit code: {code}"
         assert result["status"] == "active_session", f"unexpected status: {result}"
         print("  session_catchup reads from output_dir OK")
-
-
-if __name__ == "__main__":
-    print("=== file-based-planning scripts ===")
-    test_init_planning_writes_to_output_dir()
-    test_check_complete_reads_from_output_dir()
-    test_session_catchup_reads_from_output_dir()
-    print("\n✅ All file-based-planning script tests passed!")

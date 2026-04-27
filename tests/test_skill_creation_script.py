@@ -212,13 +212,3 @@ def test_bootstrapped_media_skills_validate():
         )
         assert analyze_validate["status"] == "ok", analyze_validate["skill_created/updated"]
         print("  bootstrapped media skills validate OK")
-
-
-if __name__ == "__main__":
-    print("=== Skill Creation Script ===")
-    test_parse_args_defaults_to_multi()
-    test_multi_scaffold_creates_phase_scripts()
-    test_validate_multi_requires_multiple_scripts()
-    test_single_scaffold_validates()
-    test_bootstrapped_media_skills_validate()
-    print("\n✅ All skill-creation script tests passed!")

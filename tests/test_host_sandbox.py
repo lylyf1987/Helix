@@ -188,15 +188,3 @@ def test_host_sandbox_env_forwarding():
             print("  Host sandbox env forwarding OK")
         finally:
             executor.shutdown()
-
-
-if __name__ == "__main__":
-    print("=== Host sandbox ===")
-    test_host_sandbox_bash_execution()
-    test_host_sandbox_python_execution()
-    test_host_sandbox_writes_workspace_file()
-    test_host_sandbox_failure_exit_code()
-    test_host_sandbox_keyboard_interrupt_raises_user_interrupted()
-    test_host_sandbox_timeout_kills_runaway()
-    test_host_sandbox_env_forwarding()
-    print("\n✅ All host sandbox tests passed!")
