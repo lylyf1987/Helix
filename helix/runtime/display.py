@@ -169,17 +169,20 @@ class StreamingDisplay:
         return self._output if self._output is not None else sys.stdout
 
     def reset(self, name: str = "agent") -> None:
-        """Start a new turn — write the role badge header, reset buffers."""
+        """Start a new turn — reset buffers. Badge is written lazily on the
+        first content token so reasoning streams cleanly above it."""
         self._close_reasoning()
         self._accumulated = ""
         self._printed_to = 0
         self._in_action = False
         self._current_name = name
-        self._write_badge_header()
+        self._badge_printed = False
 
     def on_content(self, token: str) -> None:
         """Stream a response prose token live, holding back partial `<next_action>`."""
         self._close_reasoning()
+        if not self._badge_printed:
+            self._write_badge_header()
         self._accumulated += token
         if self._in_action:
             return
@@ -231,7 +234,7 @@ class StreamingDisplay:
         self._printed_to = 0
         self._in_action = False
         self._badge_printed = False
-        self._write_badge_header()
+        # Badge is written lazily on the first content token of the retry.
 
     # ----- internals ------------------------------------------------------- #
 
