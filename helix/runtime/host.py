@@ -296,7 +296,8 @@ class RuntimeHost:
         write_startup_banner(
             title="OpenHelix",
             fields=[
-                ("model", f"{self._model.model} ({self._model.endpoint_url})"),
+                ("model", self._model.model),
+                ("endpoint", self._model.endpoint_url),
                 ("mode", self._approval.mode),
                 ("workspace", str(self.workspace)),
                 ("session", f"{self.session_id} ({state})"),

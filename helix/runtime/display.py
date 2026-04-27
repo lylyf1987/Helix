@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import shutil
 import sys
 from typing import Any, Optional, TextIO
 
@@ -108,6 +109,34 @@ def _fit(value: str, width: int, kind: str = "url") -> str:
     return value[: width - 1] + "…"
 
 
+def _default_banner_width() -> int:
+    """Pick a banner width based on the terminal columns, with sensible bounds.
+
+    Caps at 100 so very wide terminals don't get a sprawling box; floors at
+    64 so very narrow ones still fit the title + status fields.
+    """
+    try:
+        cols = shutil.get_terminal_size((80, 24)).columns
+    except OSError:
+        cols = 80
+    return max(64, min(100, cols - 2))
+
+
+def _fit_kind(value: str) -> str:
+    """Pick the truncation strategy for a banner value.
+
+    URLs (``http://``, ``https://``) end-truncate so the scheme + host stay
+    visible. Other values containing ``/`` are treated as paths and
+    start-truncate so the trailing component stays visible. Plain values
+    end-truncate (rarely matters).
+    """
+    if value.startswith(("http://", "https://")):
+        return "url"
+    if "/" in value:
+        return "path"
+    return "url"
+
+
 def clear_screen(output: Optional[TextIO] = None) -> None:
     """Clear the visible terminal viewport and move the cursor to home.
 
@@ -124,7 +153,7 @@ def write_startup_banner(
     fields: list[tuple[str, str]],
     hint: str,
     output: Optional[TextIO] = None,
-    width: int = 64,
+    width: Optional[int] = None,
 ) -> None:
     """Render a Claude-Code-style box-drawn startup banner.
 
@@ -135,6 +164,8 @@ def write_startup_banner(
     the start); other values are truncated at the end.
     """
     stream = output if output is not None else sys.stdout
+    if width is None:
+        width = _default_banner_width()
     inner = width - 2
     border_h = "─" * inner
 
@@ -150,8 +181,7 @@ def write_startup_banner(
     for label, value in fields:
         # margins (2 left + 1 right) + label column + space between label and value
         avail = inner - 3 - _BANNER_LABEL_WIDTH - 1
-        kind = "path" if "/" in value else "url"
-        fitted = _fit(value, avail, kind=kind)
+        fitted = _fit(value, avail, kind=_fit_kind(value))
         row = f"  {_BOLD}{label.ljust(_BANNER_LABEL_WIDTH)}{_RESET} {fitted}"
         parts.append(_line(row))
     parts.append(_line())
