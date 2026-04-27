@@ -12,28 +12,24 @@ from helix.runtime.sandbox import HostSandboxExecutor
 
 def make_xml_output(
     response: str,
-    next_action: str,
+    action_type: str,
     action_input: Mapping[str, Any] | None = None,
 ) -> str:
-    """Build an `<output>` block in the agent's XML reply format.
+    """Build an agent reply: prose, blank line, then the `<action>` block.
 
     Centralizes the format so tests don't drift from the parser's expectations.
-    Lists in ``action_input`` are emitted as `<arg>` children (e.g. for
-    ``script_args``); all other values are stringified into their tag body.
-    Pass ``action_input=None`` for ``chat`` / ``think`` (the tag is omitted).
+    For ``chat`` / ``think`` (no payload), pass ``action_input=None`` and the
+    self-closing form ``<action><chat/></action>`` is emitted. For ``exec``
+    and ``delegate``, pass an ``action_input`` mapping; lists become `<arg>`
+    children, multi-line values get their own line.
     """
-    parts = [
-        "<output>",
-        f"<response>{response}</response>",
-        f"<next_action>{next_action}</next_action>",
-    ]
-    if action_input:
-        parts.append("<action_input>")
-        for key, value in action_input.items():
-            parts.append(_render_field(key, value))
-        parts.append("</action_input>")
-    parts.append("</output>")
-    return "\n".join(parts)
+    if not action_input:
+        return f"{response}\n\n<action><{action_type}/></action>"
+    field_lines = "\n".join(_render_field(key, value) for key, value in action_input.items())
+    return (
+        f"{response}\n\n"
+        f"<action>\n<{action_type}>\n{field_lines}\n</{action_type}>\n</action>"
+    )
 
 
 def _render_field(key: str, value: Any) -> str:

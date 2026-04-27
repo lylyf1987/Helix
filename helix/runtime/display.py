@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 import sys
 from typing import Any, Optional, TextIO
 
@@ -19,12 +18,10 @@ _EXEC_PAYLOAD_ORDER = (
 # ANSI color scheme
 # --------------------------------------------------------------------------- #
 
-# ANSI styles
 _RESET = "\033[0m"
 _BOLD = "\033[1m"
 _DIM = "\033[2m"
 
-# Prefix shown before the first reasoning-stream token.
 _THINKING_PREFIX = "thinking> "
 
 # Role prefix badges: bold + colored background + white text
@@ -36,6 +33,11 @@ _BADGE = {
     "approval":   f"{_BOLD}\033[48;5;130m\033[38;5;255m",   # amber badge
 }
 
+# Boundary marker the streaming display watches for. Any token chars after
+# this marker are suppressed from the live UI.
+_ACTION_TAG = "<action>"
+_ACTION_HOLDBACK = len(_ACTION_TAG) - 1  # 7
+
 
 def _write_role_block(role: str, text: str, output: TextIO) -> None:
     """Write a block with a colored role badge prefix and content."""
@@ -43,7 +45,6 @@ def _write_role_block(role: str, text: str, output: TextIO) -> None:
         return
     badge = _BADGE.get(role, f"{_BOLD}")
 
-    # Split into prefix (role>) and content
     if "> " in text:
         prefix, content = text.split("> ", 1)
         prefix_text = f"{prefix}>"
@@ -51,7 +52,6 @@ def _write_role_block(role: str, text: str, output: TextIO) -> None:
         prefix_text = role
         content = text
 
-    # Badge + content
     output.write(f"{badge} {prefix_text} {_RESET} {content}")
     if not content.endswith("\n"):
         output.write("\n")
@@ -62,9 +62,8 @@ def _write_role_block(role: str, text: str, output: TextIO) -> None:
 def write_agent(text: str, output: Optional[TextIO] = None, *, role: str = "core_agent") -> None:
     """Write agent output with the role's badge prefix.
 
-    The role argument selects the badge color — `core_agent` gets the blue
-    badge, `sub_agent` gets the green badge. Any unknown role falls back to
-    the default bold.
+    Used for non-streaming agent output (e.g. delegate result strings).
+    The interactive REPL streams agent prose via StreamingDisplay instead.
     """
     stream = output if output is not None else sys.stdout
     _write_role_block(role, text, stream)
@@ -115,36 +114,24 @@ def iter_exec_payload_items(payload: dict[str, Any]) -> list[tuple[str, Any]]:
 
 
 def extract_streaming_response(partial_text: str) -> Optional[str]:
-    """Extract the <response> body from a partial XML stream.
+    """Return the printable portion of a partial response buffer.
 
-    Used to stream tokens to the UI during generation. Returns the response
-    text accumulated so far, or None if the opening ``<response>`` tag hasn't
-    appeared yet. The closing ``</response>`` tag (if reached) ends the
-    extraction; otherwise everything after the opening tag is returned with
-    one leading newline trimmed for display readability.
+    With response-outside-`<action>`, the response prose is everything from
+    the start of the buffer up to (but not including) ``<action>``. While
+    streaming, we hold back the trailing 7 chars (= ``len("<action>") - 1``)
+    so a partial ``<action>`` arriving across token boundaries doesn't leak
+    onto the UI. Once ``<action>`` appears, we return the prose up to it.
 
-    Tag bodies are raw text — no escape decoding is performed. If the body
-    is wrapped in ``<![CDATA[...]]>``, the wrapper is stripped before
-    returning.
+    Returns ``None`` only when the buffer is too short to safely flush
+    (less than the holdback length and no ``<action>`` seen yet).
     """
-    open_idx = partial_text.find("<response>")
-    if open_idx == -1:
+    idx = partial_text.find(_ACTION_TAG)
+    if idx != -1:
+        text = partial_text[:idx]
+        return text if text else None
+    if len(partial_text) <= _ACTION_HOLDBACK:
         return None
-    body_start = open_idx + len("<response>")
-    close_idx = partial_text.find("</response>", body_start)
-    body = partial_text[body_start:close_idx] if close_idx != -1 else partial_text[body_start:]
-
-    stripped = body.lstrip()
-    if stripped.startswith("<![CDATA["):
-        inner = stripped[len("<![CDATA["):]
-        end = inner.find("]]>")
-        body = inner if end == -1 else inner[:end]
-    elif body.startswith("\r\n"):
-        body = body[2:]
-    elif body.startswith("\n"):
-        body = body[1:]
-
-    return body if body else None
+    return partial_text[: len(partial_text) - _ACTION_HOLDBACK]
 
 
 # --------------------------------------------------------------------------- #
@@ -153,39 +140,64 @@ def extract_streaming_response(partial_text: str) -> Optional[str]:
 
 
 class StreamingDisplay:
-    """Stateful streaming callback that buffers only the parsed response.
+    """Live-streams agent prose to the terminal as tokens arrive.
 
-    Accumulates raw LLM tokens and uses extract_streaming_response() to
-    track the latest response text. The text is only printed if the turn
-    later passes parsing/validation. Raw XML structure remains hidden.
+    Per turn:
+      * ``reset(name)`` writes the role badge header and resets state.
+      * ``on_reasoning(token)`` streams reasoning tokens live in dim/grey.
+      * ``on_content(token)`` streams response prose live; once ``<action>``
+        is seen, all subsequent tokens are suppressed (they're the
+        structured action block, not user-visible prose).
+      * ``commit()`` closes the turn with a separator newline.
+      * ``discard()`` writes a dim retry cue and resets state for a fresh
+        attempt under the same role badge — the previously-streamed prose
+        stays on screen, the cue makes the duplication legible.
     """
 
     def __init__(self, output: Optional[TextIO] = None) -> None:
         self._output = output
         self._accumulated = ""
-        self._response_text = ""
+        self._printed_to = 0
+        self._in_action = False
         self._current_name = "agent"
         self._reasoning_active = False
+        self._badge_printed = False
 
     @property
     def _stream(self) -> TextIO:
         return self._output if self._output is not None else sys.stdout
 
+    def reset(self, name: str = "agent") -> None:
+        """Start a new turn — write the role badge header, reset buffers."""
+        self._close_reasoning()
+        self._accumulated = ""
+        self._printed_to = 0
+        self._in_action = False
+        self._current_name = name
+        self._write_badge_header()
+
     def on_content(self, token: str) -> None:
-        """Called per content token during model.generate()."""
+        """Stream a response prose token live, holding back partial `<action>`."""
         self._close_reasoning()
         self._accumulated += token
-        response = extract_streaming_response(self._accumulated)
-        if response is None:
+        if self._in_action:
             return
-        self._response_text = response
+
+        idx = self._accumulated.find(_ACTION_TAG, self._printed_to)
+        if idx != -1:
+            self._flush(idx)
+            self._in_action = True
+            return
+
+        safe_end = len(self._accumulated) - _ACTION_HOLDBACK
+        if safe_end > self._printed_to:
+            self._flush(safe_end)
 
     def on_reasoning(self, token: str) -> None:
-        """Called per reasoning_content token — stream live in dim/grey.
+        """Stream a reasoning token live in dim.
 
-        Reasoning tokens are written to stdout immediately so the user sees
-        the model thinking. They are NOT buffered into the response text and
-        therefore never reach the parsed action or the recorded history.
+        Reasoning tokens are not buffered into the response and never reach
+        the parsed action or recorded history.
         """
         stream = self._stream
         if not self._reasoning_active:
@@ -194,40 +206,62 @@ class StreamingDisplay:
         stream.write(token)
         stream.flush()
 
-    def reset(self, name: str = "agent") -> None:
-        """Reset state for a new turn."""
-        self._close_reasoning()
-        self._accumulated = ""
-        self._response_text = ""
-        self._current_name = name
-
     def commit(self) -> None:
-        """Print the buffered response as agent output."""
+        """Close the current turn cleanly. Prose is already on screen."""
         self._close_reasoning()
-        if not self._response_text:
-            return
-        write_agent(
-            f"{self._current_name}> {self._response_text}",
-            self._stream,
-            role=self._current_name,
-        )
+        self._flush_remaining()
+        if self._badge_printed:
+            self._stream.write("\n\n")
+            self._stream.flush()
+            self._badge_printed = False
 
     def discard(self) -> None:
-        """Drop any buffered response from a failed parse attempt."""
+        """Mark a parse-failed attempt with a dim retry cue, prepare for retry.
+
+        The previously-streamed prose stays visible so the user understands
+        what the agent tried to say. A dim ``runtime>`` cue separates it
+        from the fresh attempt, which gets its own badge header.
+        """
         self._close_reasoning()
+        self._flush_remaining()
+        self._stream.write(f"\n{_DIM}runtime> retrying after parse error{_RESET}\n\n")
+        self._stream.flush()
         self._accumulated = ""
-        self._response_text = ""
+        self._printed_to = 0
+        self._in_action = False
+        self._badge_printed = False
+        self._write_badge_header()
+
+    # ----- internals ------------------------------------------------------- #
+
+    def _flush(self, up_to: int) -> None:
+        """Write _accumulated[_printed_to:up_to] to the stream."""
+        self._stream.write(self._accumulated[self._printed_to:up_to])
+        self._stream.flush()
+        self._printed_to = up_to
+
+    def _flush_remaining(self) -> None:
+        """Drain any held-back content (the trailing 7-char lookahead).
+
+        Called at end-of-turn when no <action> arrived to release the holdback
+        on its own. Without this, the last 7 chars of the model's reply would
+        be silently dropped from the UI.
+        """
+        if self._in_action:
+            return
+        if len(self._accumulated) > self._printed_to:
+            self._flush(len(self._accumulated))
+
+    def _write_badge_header(self) -> None:
+        badge = _BADGE.get(self._current_name, _BOLD)
+        self._stream.write(f"{badge} {self._current_name}> {_RESET} ")
+        self._stream.flush()
+        self._badge_printed = True
 
     def _close_reasoning(self) -> None:
-        """End the dim reasoning zone cleanly so later output isn't styled.
-
-        No-op if no reasoning zone is open — callers don't need to guard.
-        Emits a trailing blank line so the following badge block (core_agent
-        / sub_agent / runtime) reads as a visually distinct section.
-        """
+        """End the dim reasoning zone cleanly so later output isn't styled."""
         if not self._reasoning_active:
             return
-        stream = self._stream
-        stream.write(f"{_RESET}\n\n")
-        stream.flush()
+        self._stream.write(f"{_RESET}\n\n")
+        self._stream.flush()
         self._reasoning_active = False

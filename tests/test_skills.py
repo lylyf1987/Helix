@@ -224,21 +224,20 @@ def test_full_pipeline_with_skill_exec():
                 call_count[0] += 1
                 if call_count[0] == 1:
                     return (
-                        """<output>
-<response>Let me check something.</response>
-<next_action>exec</next_action>
-<action_input>
+                        """Let me check something.
+
+<action>
+<exec>
 <job_name>test-skill-pipeline</job_name>
 <code_type>bash</code_type>
 <script>echo Skills loaded successfully</script>
-</action_input>
-</output>"""
+</exec>
+</action>"""
                     )
                 return (
-                    """<output>
-<response>Skills and knowledge are properly loaded!</response>
-<next_action>chat</next_action>
-</output>"""
+                    """Skills and knowledge are properly loaded!
+
+<action><chat/></action>"""
                 )
 
         workspace = Path(td)

@@ -48,7 +48,8 @@ class ActionParseError(Exception):
 # --------------------------------------------------------------------------- #
 
 
-_OUTPUT_RE = re.compile(r"<output>\s*(.*?)\s*</output>", re.DOTALL)
+_ACTION_RE = re.compile(r"<action>\s*(.*?)\s*</action>", re.DOTALL)
+_CHILD_RE = re.compile(r"<(\w+)\s*(?:/>|>(.*?)</\1>)", re.DOTALL)
 
 
 def _extract_tag(body: str, name: str) -> str | None:
@@ -113,69 +114,88 @@ def parse_action(
 
     Expected format::
 
-        <output>
-          <response>...</response>
-          <next_action>chat | think | exec | delegate</next_action>
-          <action_input>...</action_input>     (omitted for chat/think)
-        </output>
+        Plain prose response to the latest context, no escaping required.
 
-    Tag bodies are raw text — no JSON escaping, no HTML entities. For
-    multi-line code in ``<script>``, write the body verbatim. If the body
-    must contain the literal closing tag (e.g. ``</script>``), wrap it in
-    ``<![CDATA[...]]>``.
+        <action>
+          <exec>                              (or <chat/> | <think/> | <delegate>...</delegate>)
+            <job_name>...</job_name>
+            <code_type>bash</code_type>
+            <script>raw multi-line code</script>
+          </exec>
+        </action>
+
+    The action type is the single child tag of ``<action>``. Self-closing
+    forms (``<chat/>``, ``<think/>``) are accepted alongside paired forms
+    (``<chat></chat>``). Tag bodies are raw text — no JSON escaping, no
+    HTML entities. If a ``<script>`` body must contain its own literal
+    closing tag, wrap it in ``<![CDATA[...]]>``.
 
     Raises:
         ActionParseError: on any parsing or validation failure.
     """
-    match = _OUTPUT_RE.search(raw_llm_output)
-    if not match:
+    match = _ACTION_RE.search(raw_llm_output)
+    if match is None:
         raise ActionParseError(
-            "Missing <output>...</output> tags in model response.",
+            "Missing <action>...</action> block in model response.",
             raw_text=raw_llm_output,
         )
-    body = match.group(1)
 
-    response = _extract_tag(body, "response")
+    response = raw_llm_output[: match.start()].strip()
     if not response:
         raise ActionParseError(
-            "Missing or empty <response> inside <output>.",
+            "Missing response prose before <action> block.",
             raw_text=raw_llm_output,
         )
 
-    next_action_raw = _extract_tag(body, "next_action")
-    if next_action_raw is None or not next_action_raw.strip():
+    body = match.group(1).strip()
+    if not body:
         raise ActionParseError(
-            "Missing or empty <next_action> inside <output>.",
+            "Empty <action> block. Use one of <chat/>, <think/>, "
+            "<exec>...</exec>, <delegate>...</delegate>.",
             raw_text=raw_llm_output,
         )
-    action_type = next_action_raw.strip().lower()
 
-    if action_type not in allowed_actions:
+    children = list(_CHILD_RE.finditer(body))
+    if len(children) == 0:
         raise ActionParseError(
-            f"Invalid next_action '{action_type}'. Must be one of: {sorted(allowed_actions)}.",
+            "Missing action child tag inside <action>. Use one of "
+            "<chat/>, <think/>, <exec>...</exec>, <delegate>...</delegate>.",
             raw_text=raw_llm_output,
         )
-
-    action_input_body = _extract_tag(body, "action_input")
-
-    if action_type in ("chat", "think"):
-        # Lenient: absent or empty action_input both mean "no input".
-        return Action(response=response, type=action_type, payload={})
-
-    if not action_input_body:
+    if len(children) > 1:
+        names = [c.group(1) for c in children]
         raise ActionParseError(
-            f"{action_type} action requires <action_input> with details.",
+            f"<action> must contain exactly one child tag, found {len(children)}: {names}.",
             raw_text=raw_llm_output,
         )
 
-    if action_type == "exec":
-        payload = _parse_exec_input(action_input_body, raw_llm_output)
+    child = children[0]
+    if body[: child.start()].strip() or body[child.end():].strip():
+        raise ActionParseError(
+            "<action> body must contain only the child tag, no extra text.",
+            raw_text=raw_llm_output,
+        )
+
+    name = child.group(1).strip().lower()
+    content = child.group(2) or ""
+
+    if name not in allowed_actions:
+        raise ActionParseError(
+            f"Unknown action child tag '<{name}>'. Allowed: {sorted(allowed_actions)}.",
+            raw_text=raw_llm_output,
+        )
+
+    if name in ("chat", "think"):
+        return Action(response=response, type=name, payload={})
+
+    if name == "exec":
+        payload = _parse_exec_input(content, raw_llm_output)
         _validate_exec_payload(payload, raw_llm_output)
     else:  # delegate
-        payload = _parse_delegate_input(action_input_body)
+        payload = _parse_delegate_input(content)
         _validate_delegate_payload(payload, raw_llm_output)
 
-    return Action(response=response, type=action_type, payload=payload)
+    return Action(response=response, type=name, payload=payload)
 
 
 # --------------------------------------------------------------------------- #

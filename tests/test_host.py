@@ -439,13 +439,12 @@ def test_host_process_message():
         # Mock the model to return a simple chat response
         def mock_generate(messages, *, chunk_callback=None, **_kwargs):
             if chunk_callback is not None:
-                for piece in ("<output>\n<response>Hello ", "from the agent!"):
+                for piece in ("Hello ", "from the agent!\n\n<action><chat/></action>"):
                     chunk_callback(piece)
             return (
-                """<output>
-<response>Hello from the agent!</response>
-<next_action>chat</next_action>
-</output>"""
+                """Hello from the agent!
+
+<action><chat/></action>"""
             )
 
         mock_generate = MagicMock(side_effect=mock_generate)
@@ -488,10 +487,9 @@ def test_host_process_message_saves_named_session():
         host = _make_host(workspace, session_id="active-1")
 
         mock_generate = MagicMock(return_value=(
-            """<output>
-<response>Saved response</response>
-<next_action>chat</next_action>
-</output>"""
+            """Saved response
+
+<action><chat/></action>"""
         ))
         host._model.generate = mock_generate
 
@@ -528,27 +526,26 @@ def test_host_process_exec():
             call_count[0] += 1
             if call_count[0] == 1:
                 if chunk_callback is not None:
-                    for piece in ("<output>\n<response>Let ", "me check."):
+                    for piece in ("Let ", "me check.\n\n<action><exec>...</exec></action>"):
                         chunk_callback(piece)
                 return (
-                    """<output>
-<response>Let me check.</response>
-<next_action>exec</next_action>
-<action_input>
+                    """Let me check.
+
+<action>
+<exec>
 <job_name>test-exec</job_name>
 <code_type>bash</code_type>
 <script>echo test-output</script>
-</action_input>
-</output>"""
+</exec>
+</action>"""
                 )
             if chunk_callback is not None:
-                for piece in ("<output>\n<response>Do", "ne!"):
+                for piece in ("Do", "ne!\n\n<action><chat/></action>"):
                     chunk_callback(piece)
             return (
-                """<output>
-<response>Done!</response>
-<next_action>chat</next_action>
-</output>"""
+                """Done!
+
+<action><chat/></action>"""
             )
 
         host._model.generate = mock_generate
@@ -609,18 +606,17 @@ def test_host_process_message_discards_parse_failed_preview():
                     '</output>'
                 )
                 if chunk_callback is not None:
-                    for piece in ("<output>\n<response>Discard ", "this preview"):
+                    for piece in ("Discard ", "this preview\n\n<malformed>"):
                         chunk_callback(piece)
                 return bad
 
             good = (
-                """<output>
-<response>Keep this final answer</response>
-<next_action>chat</next_action>
-</output>"""
+                """Keep this final answer
+
+<action><chat/></action>"""
             )
             if chunk_callback is not None:
-                for piece in ("<output>\n<response>Keep ", "this final answer"):
+                for piece in ("Keep ", "this final answer\n\n<action><chat/></action>"):
                     chunk_callback(piece)
             return good
 
@@ -631,15 +627,26 @@ def test_host_process_message_discards_parse_failed_preview():
             host._process_message("Retry if needed")
 
         output = captured.getvalue()
-        assert "Discard this preview" not in output
+        # Prose from the failed attempt IS shown live (per the design — UI
+        # transparency wins over hiding what the agent tried to say).
+        assert "Discard this preview" in output
+        # The successful retry's prose is also shown.
         assert "Keep this final answer" in output
+        # A dim retry cue separates the two visible streams.
+        assert "retrying after parse error" in output
 
+        # History: only the runtime parse-error Turn is recorded for the
+        # failed attempt; the successful attempt's prose lands as a single
+        # core_agent Turn. Failed-attempt prose is NOT in history (atomic
+        # turns — a turn either succeeded or it didn't).
         runtime_turns = [t for t in host._env.full_history if t.role == "runtime"]
         assert len(runtime_turns) == 1
         assert "Output parse error" in runtime_turns[0].content
 
         agent_turns = [t for t in host._env.full_history if t.role == "core_agent"]
         assert len(agent_turns) == 1
+        assert "Keep this final answer" in agent_turns[0].content
+        assert "Discard this preview" not in agent_turns[0].content
         assert "Keep this final answer" in agent_turns[0].content
         print("  Parse-failed preview discarded OK")
 
@@ -789,43 +796,36 @@ def test_host_effort_forwarded_to_provider():
 # =========================================================================== #
 
 
-def test_streaming_extractor():
-    """Partial body before </response> close: return the accumulated text."""
-    partial = "<output>\n<response>Hello wor"
-    result = extract_streaming_response(partial)
-    assert result == "Hello wor"
-    print("  Streaming extractor OK")
+def test_streaming_extractor_partial_no_action_yet():
+    """While streaming, return text up to the holdback so a partial <action>
+    arriving across token boundaries can't leak onto the UI."""
+    # 12 chars; holdback is 7, so 5 chars are safe to print.
+    result = extract_streaming_response("Hello world!")
+    assert result == "Hello"
+    print("  Streaming extractor (partial, no action yet) OK")
 
 
-def test_streaming_extractor_full_response():
-    """Once </response> arrives, extraction stops at the close tag."""
-    partial = "<output>\n<response>Hello world</response>\n<next_action>chat</next_action>\n</output>"
-    result = extract_streaming_response(partial)
-    assert result == "Hello world"
-    print("  Streaming extractor (full response) OK")
+def test_streaming_extractor_after_action():
+    """Once <action> appears, return everything before it as the response."""
+    result = extract_streaming_response("Hello world\n\n<action><chat/></action>")
+    assert result == "Hello world\n\n"
+    print("  Streaming extractor (after action) OK")
 
 
-def test_streaming_extractor_preserves_newlines():
-    """Newlines inside the body are returned raw — no JSON unescape."""
-    partial = "<output>\n<response>line one\nline two"
-    result = extract_streaming_response(partial)
-    assert result == "line one\nline two"
-    print("  Streaming extractor preserves newlines OK")
+def test_streaming_extractor_holdback_prevents_partial_leak():
+    """A partial <action> at the buffer tail must be held back, not flushed."""
+    # "I'm done.\n\n<a" — the trailing "<a" could be a partial <action>.
+    result = extract_streaming_response("I'm done.\n\n<a")
+    # Holdback eats the last 7 chars; only "I'm don" is safe.
+    assert result is None or "<a" not in result
+    print("  Streaming extractor holdback OK")
 
 
-def test_streaming_extractor_strips_cdata_wrapper():
-    """If the body opens with CDATA, the wrapper is stripped before display."""
-    partial = "<output>\n<response><![CDATA[<b>raw</b>"
-    result = extract_streaming_response(partial)
-    assert result == "<b>raw</b>"
-    print("  Streaming extractor strips CDATA OK")
-
-
-def test_streaming_extractor_not_yet():
-    """Before <response> arrives, return None."""
-    result = extract_streaming_response("<output>\n<next_action>")
+def test_streaming_extractor_too_short():
+    """Fewer chars than the holdback length and no <action> seen → None."""
+    result = extract_streaming_response("Hi")
     assert result is None
-    print("  Streaming extractor (not yet) OK")
+    print("  Streaming extractor (too short) OK")
 
 
 # =========================================================================== #
@@ -834,53 +834,76 @@ def test_streaming_extractor_not_yet():
 
 
 def test_streaming_display_on_reasoning_emits_dim_prefix():
-    """First reasoning token emits the dim prefix; later tokens just append raw.
-
-    The prefix does NOT include a leading newline — that blank line is owned
-    by the caller (see host._process_message's print()).
-    """
+    """First reasoning token emits the dim prefix; later tokens append raw."""
     buf = StringIO()
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("abc")
     display.on_reasoning("def")
     written = buf.getvalue()
-    assert written.startswith("\033[2mthinking> abc")
+    assert "\033[2mthinking> abc" in written
     assert written.endswith("def")
-    assert "\033[0m" not in written  # not closed yet
     print("  StreamingDisplay on_reasoning dim prefix OK")
 
 
 def test_streaming_display_content_after_reasoning_closes_dim():
-    """When content tokens arrive after reasoning, the dim zone closes cleanly first."""
+    """Content tokens after reasoning close the dim zone before live-streaming prose."""
     buf = StringIO()
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("hmm")
-    display.on_content("<output><response>XYZ_FINAL</response>")
+    display.on_content("XYZ_FINAL_response_text_long_enough_to_flush")
     written = buf.getvalue()
     assert "\033[2mthinking> hmm" in written
-    # Closer is reset + newline + blank line (separates from badge block)
+    # Reasoning zone closes cleanly.
     assert "\033[0m\n\n" in written
-    # content is buffered, not yet printed
-    assert "XYZ_FINAL" not in written
+    # Prose streams live — most of it is on screen (minus the 7-char holdback).
+    assert "XYZ_FINAL" in written
     print("  StreamingDisplay closes dim on content arrival OK")
 
 
+def test_streaming_display_retry_cue_on_discard():
+    """discard() leaves prior prose on screen and emits a dim retry cue
+    before re-printing the badge for a fresh attempt."""
+    buf = StringIO()
+    display = StreamingDisplay(output=buf)
+    display.reset("core_agent")
+    display.on_content("first attempt prose tokens that are long enough to flush past holdback")
+    display.discard()
+    display.on_content("second attempt prose")
+    display.commit()  # end-of-turn drains the holdback tail
+    written = buf.getvalue()
+    # First attempt's prose is still visible.
+    assert "first attempt prose" in written
+    # Retry cue is visible with the dim ANSI escape.
+    assert "retrying after parse error" in written
+    assert "\033[2m" in written  # dim
+    # Second attempt got its own badge after the cue.
+    assert written.count("core_agent>") >= 2
+    # Second attempt's prose is also visible.
+    assert "second attempt prose" in written
+    print("  StreamingDisplay retry cue on discard OK")
+
+
 def test_streaming_display_commit_closes_dim_if_active():
-    """commit() closes an open reasoning zone before rendering the badge block."""
+    """commit() closes an open reasoning zone and ends the turn cleanly."""
     buf = StringIO()
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("thinking text")
-    display.on_content("<output><response>final answer</response>")
+    display.on_content("final answer here\n\n<action><chat/></action>")
     display.commit()
     written = buf.getvalue()
     assert "\033[2mthinking> thinking text" in written
-    assert "\033[0m\n" in written
-    # Badge block is present with the final answer
+    # Reasoning zone closes.
+    assert "\033[0m\n\n" in written
+    # Badge header was written at reset.
     assert "core_agent" in written
-    assert "final answer" in written
+    # Prose was live-streamed up to <action>.
+    assert "final answer here" in written
+    # The <action> block itself is suppressed.
+    assert "<action>" not in written
+    assert "<chat" not in written
     # Dim close appears before the badge
     assert written.index("\033[0m\n") < written.index("final answer")
     print("  StreamingDisplay commit closes dim before badge OK")

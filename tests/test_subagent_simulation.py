@@ -51,32 +51,30 @@ class InstrumentedCoreModel:
         if self.call_count == 1:
             # Turn 1: Think about the task
             return (
-                """<output>
-<response>The user wants to know the Python version. I should delegate this to a sub-agent who can run a command.</response>
-<next_action>think</next_action>
-</output>"""
+                """The user wants to know the Python version. I should delegate this to a sub-agent who can run a command.
+
+<action><think/></action>"""
             )
 
         if self.call_count == 2:
             # Turn 2: Delegate to a sub-agent
             return (
-                """<output>
-<response>I will delegate the version check to a sub-agent.</response>
-<next_action>delegate</next_action>
-<action_input>
+                """I will delegate the version check to a sub-agent.
+
+<action>
+<delegate>
 <role>system-inspector</role>
 <objective>Run `python3 --version` and report the Python version number.</objective>
 <context>The user asked what Python version is installed. Run the command and report back the version string.</context>
-</action_input>
-</output>"""
+</delegate>
+</action>"""
             )
 
         # Turn 3: Use sub-agent result to answer
         return (
-            """<output>
-<response>Based on the sub-agent report, the installed Python version is the one reported in the execution output. The sub-agent successfully ran the version check command.</response>
-<next_action>chat</next_action>
-</output>"""
+            """Based on the sub-agent report, the installed Python version is the one reported in the execution output. The sub-agent successfully ran the version check command.
+
+<action><chat/></action>"""
         )
 
 
@@ -98,23 +96,22 @@ class InstrumentedSubModel:
         if self.call_count == 1:
             # Turn 1: Run the version command
             return (
-                """<output>
-<response>I will run the python version command to check.</response>
-<next_action>exec</next_action>
-<action_input>
+                """I will run the python version command to check.
+
+<action>
+<exec>
 <job_name>check-python-version</job_name>
 <code_type>bash</code_type>
 <script>python3 --version</script>
-</action_input>
-</output>"""
+</exec>
+</action>"""
             )
 
         # Turn 2: Report results
         return (
-            """<output>
-<response>The Python version check is complete. I have identified the installed Python version from the command output.</response>
-<next_action>chat</next_action>
-</output>"""
+            """The Python version check is complete. I have identified the installed Python version from the command output.
+
+<action><chat/></action>"""
         )
 
 
@@ -146,41 +143,39 @@ class SharedInstrumentedModel:
             sub_calls = sum(1 for c in self.all_calls if c["caller"] == "sub_agent")
             if sub_calls == 1:
                 return (
-                    """<output>
-<response>Running the requested command.</response>
-<next_action>exec</next_action>
-<action_input>
+                    """Running the requested command.
+
+<action>
+<exec>
 <job_name>gather-info</job_name>
 <code_type>bash</code_type>
 <script>echo Hello from sub-agent && date</script>
-</action_input>
-</output>"""
+</exec>
+</action>"""
                 )
             return (
-                """<output>
-<response>Task complete. The command executed successfully and returned: Hello from sub-agent with timestamp.</response>
-<next_action>chat</next_action>
-</output>"""
+                """Task complete. The command executed successfully and returned: Hello from sub-agent with timestamp.
+
+<action><chat/></action>"""
             )
 
         # Core-agent calls
         core_calls = sum(1 for c in self.all_calls if c["caller"] == "core_agent")
         if core_calls == 1:
             return (
-                """<output>
-<response>I need to gather system info. Let me delegate.</response>
-<next_action>delegate</next_action>
-<action_input>
+                """I need to gather system info. Let me delegate.
+
+<action>
+<delegate>
 <role>info-gatherer</role>
 <objective>Run echo and date commands, report output.</objective>
-</action_input>
-</output>"""
+</delegate>
+</action>"""
             )
         return (
-            """<output>
-<response>The sub-agent gathered the system info successfully. The output confirmed the commands ran correctly.</response>
-<next_action>chat</next_action>
-</output>"""
+            """The sub-agent gathered the system info successfully. The output confirmed the commands ran correctly.
+
+<action><chat/></action>"""
         )
 
 
@@ -399,14 +394,14 @@ def run_simulation_scenario_3():
     # Try to parse a delegate action with sub-agent constraints
     from helix.core.action import parse_action, ActionParseError
     raw = (
-        """<output>
-<response>test</response>
-<next_action>delegate</next_action>
-<action_input>
+        """test
+
+<action>
+<delegate>
 <role>x</role>
 <objective>y</objective>
-</action_input>
-</output>"""
+</delegate>
+</action>"""
     )
     try:
         parse_action(raw, allowed_actions=ALLOWED_SUB_ACTIONS)

@@ -39,22 +39,21 @@ class CoreAgentModel:
         if self.call_count == 1:
             # First turn: delegate
             return (
-                """<output>
-<response>I will delegate research to a sub-agent.</response>
-<next_action>delegate</next_action>
-<action_input>
+                """I will delegate research to a sub-agent.
+
+<action>
+<delegate>
 <role>researcher</role>
 <objective>Find the capital of France.</objective>
 <context>User asked a geography question.</context>
-</action_input>
-</output>"""
+</delegate>
+</action>"""
             )
         # Second turn: report based on sub-agent result
         return (
-            """<output>
-<response>The sub-agent reported the capital of France is Paris.</response>
-<next_action>chat</next_action>
-</output>"""
+            """The sub-agent reported the capital of France is Paris.
+
+<action><chat/></action>"""
         )
 
 
@@ -67,10 +66,9 @@ class SubAgentModel:
     def generate(self, messages, *, chunk_callback=None, **_kwargs):
         self.call_count += 1
         return (
-            """<output>
-<response>The capital of France is Paris.</response>
-<next_action>chat</next_action>
-</output>"""
+            """The capital of France is Paris.
+
+<action><chat/></action>"""
         )
 
 
@@ -92,29 +90,27 @@ class SharedModel:
         if "You are a Sub-Agent" in system_msg:
             # Sub-agent call
             return (
-                """<output>
-<response>Research complete: Python was created by Guido van Rossum.</response>
-<next_action>chat</next_action>
-</output>"""
+                """Research complete: Python was created by Guido van Rossum.
+
+<action><chat/></action>"""
             )
 
         # Core agent
         if len(self.calls) == 1:
             return (
-                """<output>
-<response>Let me delegate this research.</response>
-<next_action>delegate</next_action>
-<action_input>
+                """Let me delegate this research.
+
+<action>
+<delegate>
 <role>researcher</role>
 <objective>Who created Python?</objective>
-</action_input>
-</output>"""
+</delegate>
+</action>"""
             )
         return (
-            """<output>
-<response>According to my research sub-agent, Python was created by Guido van Rossum.</response>
-<next_action>chat</next_action>
-</output>"""
+            """According to my research sub-agent, Python was created by Guido van Rossum.
+
+<action><chat/></action>"""
         )
 
 
@@ -233,21 +229,20 @@ def test_delegate_with_exec_in_sub_agent():
             self.count += 1
             if self.count == 1:
                 return (
-                    """<output>
-<response>Let me run a script.</response>
-<next_action>exec</next_action>
-<action_input>
+                    """Let me run a script.
+
+<action>
+<exec>
 <job_name>sub-task</job_name>
 <code_type>bash</code_type>
 <script>echo sub-agent-output</script>
-</action_input>
-</output>"""
+</exec>
+</action>"""
                 )
             return (
-                """<output>
-<response>Script ran successfully: sub-agent-output</response>
-<next_action>chat</next_action>
-</output>"""
+                """Script ran successfully: sub-agent-output
+
+<action><chat/></action>"""
             )
 
     with tempfile.TemporaryDirectory() as td:
@@ -329,10 +324,9 @@ def test_delegate_new_role_starts_fresh():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return """<output>
-<response>Done.</response>
-<next_action>chat</next_action>
-</output>"""
+            return """Done.
+
+<action><chat/></action>"""
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -357,10 +351,9 @@ def test_delegate_meta_registry_updated():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return """<output>
-<response>Done.</response>
-<next_action>chat</next_action>
-</output>"""
+            return """Done.
+
+<action><chat/></action>"""
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -390,10 +383,9 @@ def test_delegate_role_description_updates_meta():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return """<output>
-<response>Done.</response>
-<next_action>chat</next_action>
-</output>"""
+            return """Done.
+
+<action><chat/></action>"""
 
     with tempfile.TemporaryDirectory() as td:
         workspace = Path(td)
@@ -437,35 +429,34 @@ def test_sub_agent_sigint_propagates_past_delegate():
             if "You are a Sub-Agent" in sysmsg:
                 self.sub_calls += 1
                 return (
-                    """<output>
-<response>long work</response>
-<next_action>exec</next_action>
-<action_input>
+                    """long work
+
+<action>
+<exec>
 <job_name>sub-long</job_name>
 <code_type>bash</code_type>
 <script>sleep 30</script>
 <timeout_seconds>60</timeout_seconds>
-</action_input>
-</output>"""
+</exec>
+</action>"""
                 )
             self.core_calls += 1
             if self.core_calls == 1:
                 return (
-                    """<output>
-<response>delegating</response>
-<next_action>delegate</next_action>
-<action_input>
+                    """delegating
+
+<action>
+<delegate>
 <role>worker</role>
 <objective>sleep</objective>
-</action_input>
-</output>"""
+</delegate>
+</action>"""
                 )
             self.core_second_call = True
             return (
-                """<output>
-<response>second turn reached</response>
-<next_action>chat</next_action>
-</output>"""
+                """second turn reached
+
+<action><chat/></action>"""
             )
 
     with tempfile.TemporaryDirectory() as td:
@@ -527,10 +518,9 @@ def test_delegate_mode_propagates_via_shared_policy():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return """<output>
-<response>ok</response>
-<next_action>chat</next_action>
-</output>"""
+            return """ok
+
+<action><chat/></action>"""
 
     with tempfile.TemporaryDirectory() as td:
         root_env = Environment(workspace=Path(td), executor=sandbox_executor)
@@ -557,10 +547,9 @@ def test_delegate_without_state_root_still_works():
 
     class MockModel:
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
-            return """<output>
-<response>Done.</response>
-<next_action>chat</next_action>
-</output>"""
+            return """Done.
+
+<action><chat/></action>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
