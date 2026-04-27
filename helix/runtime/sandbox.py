@@ -89,7 +89,7 @@ class HostSandboxExecutor:
         job_name = str(payload.get("job_name", "unnamed_job")).strip() or "unnamed_job"
 
         try:
-            code_type, has_path, path_value, script_value, args_value = self._normalize_exec_input(payload)
+            code_type, has_path, path_value, script_value, args_value = self._normalize_exec_payload(payload)
             command = self._build_command(code_type, has_path, path_value, script_value, args_value)
         except Exception as exc:
             return Turn(role="runtime", content=f"Job '{job_name}' failed to start: {exc}")
@@ -140,7 +140,7 @@ class HostSandboxExecutor:
     # ----- Input / command construction ------------------------------------ #
 
     @staticmethod
-    def _normalize_exec_input(payload: dict[str, object]) -> tuple[str, bool, str, str, list[str]]:
+    def _normalize_exec_payload(payload: dict[str, object]) -> tuple[str, bool, str, str, list[str]]:
         if not isinstance(payload, dict):
             raise ValueError("exec action requires a dict payload")
 

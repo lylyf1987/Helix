@@ -404,7 +404,7 @@ def test_format_agent_record_includes_all_exec_payload_fields():
     )
 
     record = _format_agent_record(action)
-    assert "[action_input]" in record
+    assert "[payload]" in record
     assert "  job_name: prepare-video-model-retry" in record
     assert "  script_args: ['--timeout', '1200']" in record
     assert "  timeout_seconds: 1800" in record

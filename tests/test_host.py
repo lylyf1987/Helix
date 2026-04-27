@@ -471,7 +471,7 @@ def test_host_process_message():
         assert "Hello agent!" not in output
         assert "Hello from the agent!" in output
         assert "[next_action]" not in output
-        assert "[action_input]" not in output
+        assert "[payload]" not in output
 
         # Verify model was called
         assert mock_generate.called

@@ -49,7 +49,7 @@ Skip when:
    - cross-check important claims across fetched sources when the task warrants it
    - stop when the evidence is enough for a confident answer
 
-Recommended search rounds: 2-5 unless the user asks for deeper research.
+Recommended search rounds: 2-5 unless the caller asks for deeper research.
 
 # Runtime Contract
 
@@ -150,7 +150,7 @@ The next reasoning step should inspect runtime stdout/stderr before deciding the
 
 1. If the search phase returns no useful results, reformulate the query instead of repeating the same one.
 2. If fetch results are weak or contradictory, fetch a more authoritative subset of URLs or run a narrower follow-up query.
-3. If the backend is unavailable or repeatedly failing, stop internal retries and return to the user with a concise blocker summary.
+3. If the backend is unavailable or repeatedly failing, stop internal retries and return to the caller with a concise blocker summary.
 4. Do not keep appending more fetched pages if the existing evidence is already enough to answer.
 
 # Skill Dependencies

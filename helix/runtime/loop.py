@@ -478,7 +478,7 @@ def _format_agent_record(action: Action) -> str:
     Examples:
         I'll search the project structure.
         [next_action] exec
-        [action_input]
+        [payload]
           job_name: list-project-files
           code_type: bash
           script: find . -type f
@@ -491,14 +491,14 @@ def _format_agent_record(action: Action) -> str:
 
         I'll delegate the research to a sub-agent.
         [next_action] delegate
-        [action_input]
+        [payload]
           role: researcher
           objective: Find papers on RLHF
     """
     parts = [action.response, f"[next_action] {action.type}"]
 
     if action.type == "exec" and action.payload:
-        lines = ["[action_input]"]
+        lines = ["[payload]"]
         for key, value in iter_exec_payload_items(action.payload):
             text = str(value)
             if "\n" in text:
@@ -510,7 +510,7 @@ def _format_agent_record(action: Action) -> str:
             parts.append("\n".join(lines))
 
     elif action.type == "delegate" and action.payload:
-        lines = ["[action_input]"]
+        lines = ["[payload]"]
         for key in ("role", "role_description", "objective"):
             value = action.payload.get(key)
             if value:

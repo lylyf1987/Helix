@@ -189,10 +189,10 @@ def parse_action(
         return Action(response=response, type=name, payload={})
 
     if name == "exec":
-        payload = _parse_exec_input(content, raw_llm_output)
+        payload = _parse_exec_payload(content, raw_llm_output)
         _validate_exec_payload(payload, raw_llm_output)
     else:  # delegate
-        payload = _parse_delegate_input(content)
+        payload = _parse_delegate_payload(content)
         _validate_delegate_payload(payload, raw_llm_output)
 
     return Action(response=response, type=name, payload=payload)
@@ -203,7 +203,7 @@ def parse_action(
 # --------------------------------------------------------------------------- #
 
 
-def _parse_exec_input(body: str, raw_llm_output: str) -> dict:
+def _parse_exec_payload(body: str, raw_llm_output: str) -> dict:
     payload: dict = {}
     for field_name in ("job_name", "code_type", "script", "script_path"):
         value = _extract_tag(body, field_name)
@@ -227,7 +227,7 @@ def _parse_exec_input(body: str, raw_llm_output: str) -> dict:
     return payload
 
 
-def _parse_delegate_input(body: str) -> dict:
+def _parse_delegate_payload(body: str) -> dict:
     payload: dict = {}
     for field_name in ("role", "role_description", "objective", "context"):
         value = _extract_tag(body, field_name)

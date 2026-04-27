@@ -93,7 +93,7 @@ Recommended argument rules:
 - pass `--language` when the target language is known; otherwise the default `Auto` is acceptable
 - pass `--speaker` when a specific timbre is desired; otherwise the default built-in speaker is acceptable
 - use `--instruct` only when explicit style control is needed
-- keep sampling knobs at defaults unless the user asks for a noticeably steadier or more expressive voice
+- keep sampling knobs at defaults unless the caller asks for a noticeably steadier or more expressive voice
 - `--timeout` controls both the script HTTP wait and the local model service request budget for this call
 - when generation may run long, set exec `timeout_seconds` larger than `--timeout`
 - do not pass provider, model, or API settings; the skill owns its backend and model choice
@@ -225,7 +225,7 @@ Example inference using `--output-path`:
 
 # Error Handling Rule
 
-1. If the local model service variables are missing, stop internal retries and return control to user or runtime with the configuration failure.
+1. If the local model service variables are missing, stop internal retries and return control to the caller or runtime with the configuration failure.
 2. If model preparation fails, do not continue to inference until preparation succeeds.
 3. If preparation or generation returns `error_code=missing_host_dependency`, stop and install the named host dependency first.
 4. If output path validation fails, do not retry with the same invalid path; choose a new workspace-local path first.

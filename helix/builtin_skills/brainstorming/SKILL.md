@@ -40,14 +40,14 @@ Do not use as a long discovery loop when user asked for immediate execution and 
    - lead with recommended option and brief rationale
 5. Draft design incrementally:
    - present in small sections (about 200-300 words each)
-   - ask user to validate each section before continuing
+   - ask the caller to validate each section before continuing
 6. Verify readiness:
    - confirm open risks, dependencies, and test/verification strategy
    - ask explicit go/no-go before implementation handoff
 7. Optional persistence:
    - if requested, save approved design under workspace (for example `docs/plans/<date>-<topic>-design.md`)
 8. Final reporting:
-   - report the selected direction, key trade-offs, and immediate next step to user.
+   - report the selected direction, key trade-offs, and immediate next step to the caller.
 
 # Runtime Contract
 
@@ -100,10 +100,10 @@ If optional `exec` is used for persistence, stdout should clearly expose the res
 
 # Error Handling Rule
 
-1. If user intent is still unclear after several clarification turns, present a short assumption set and ask for explicit confirmation.
+1. If caller intent is still unclear after several clarification turns, present a short assumption set and ask for explicit confirmation.
 2. If context lookup fails (missing files, permission issues), state the blocker and continue brainstorming with explicit assumptions.
-3. If design persistence fails, return to user with failure summary and next minimal fix option.
-4. Stop internal looping once design is validated or user chooses to proceed directly.
+3. If design persistence fails, return to the caller with failure summary and next minimal fix option.
+4. Stop internal looping once design is validated or caller chooses to proceed directly.
 
 # Skill Dependencies
 
@@ -116,4 +116,4 @@ Use dependency skills only when needed:
 
 - "Too simple to design" is an anti-pattern; even small tasks should have a minimal design statement.
 - Keep brainstorming concise and decision-oriented; avoid endless ideation loops.
-- Do not start major implementation until user confirms design direction.
+- Do not start major implementation until caller confirms design direction.

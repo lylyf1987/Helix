@@ -29,7 +29,7 @@ Skip when:
 # Procedure
 
 1. Gather context:
-   - identify exactly what the user needs from the image
+   - identify exactly what the caller needs from the image
    - rewrite the request into a short, explicit analysis query
 2. Prepare input:
    - use `--image-path` for a workspace-local file when available
