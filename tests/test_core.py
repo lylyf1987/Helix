@@ -43,7 +43,7 @@ def test_state_creation():
 def test_parse_chat():
     raw = """Hi!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
     a = parse_action(raw)
     assert a.type == "chat"
     assert a.response == "Hi!"
@@ -54,7 +54,7 @@ def test_parse_chat():
 def test_parse_think():
     raw = """Thinking...
 
-<action><think/></action>"""
+<next_action><think/></next_action>"""
     a = parse_action(raw)
     assert a.type == "think"
     print("  Parse think OK")
@@ -63,13 +63,13 @@ def test_parse_think():
 def test_parse_exec():
     raw = """Running
 
-<action>
+<next_action>
 <exec>
 <job_name>test</job_name>
 <code_type>bash</code_type>
 <script>echo hello</script>
 </exec>
-</action>"""
+</next_action>"""
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["code_type"] == "bash"
@@ -80,7 +80,7 @@ def test_parse_exec():
 def test_parse_exec_script_args_array():
     raw = """Running
 
-<action>
+<next_action>
 <exec>
 <job_name>test</job_name>
 <code_type>python</code_type>
@@ -92,7 +92,7 @@ def test_parse_exec_script_args_array():
   <arg>5</arg>
 </script_args>
 </exec>
-</action>"""
+</next_action>"""
     a = parse_action(raw)
     assert a.type == "exec"
     assert a.payload["script_args"] == ["--query", "hello", "--limit", "5"]
@@ -102,12 +102,12 @@ def test_parse_exec_script_args_array():
 def test_parse_delegate():
     raw = """Delegating
 
-<action>
+<next_action>
 <delegate>
 <role>researcher</role>
 <objective>Find info</objective>
 </delegate>
-</action>"""
+</next_action>"""
     a = parse_action(raw)
     assert a.type == "delegate"
     assert a.payload["role"] == "researcher"
@@ -120,7 +120,7 @@ def test_parse_exec_multiline_script_with_specials():
     verbatim — no escaping required (this is the whole point of XML)."""
     raw = """Run the heredoc
 
-<action>
+<next_action>
 <exec>
 <job_name>complex</job_name>
 <code_type>bash</code_type>
@@ -131,7 +131,7 @@ multi line
 EOF
 </script>
 </exec>
-</action>"""
+</next_action>"""
     a = parse_action(raw)
     assert a.payload["script"] == 'cat << EOF\n"hello" \\$world {brace}\nmulti line\nEOF'
     print("  Parse exec multi-line script with specials OK")
@@ -142,13 +142,13 @@ def test_parse_exec_script_cdata_escapes_close_tag():
     </script> inside the script content."""
     raw = """Generating HTML
 
-<action>
+<next_action>
 <exec>
 <job_name>html</job_name>
 <code_type>bash</code_type>
 <script><![CDATA[echo "<script>alert(1)</script>"]]></script>
 </exec>
-</action>"""
+</next_action>"""
     a = parse_action(raw)
     assert a.payload["script"] == 'echo "<script>alert(1)</script>"'
     print("  Parse exec script CDATA escape hatch OK")
@@ -163,19 +163,19 @@ def test_parse_error_missing_tags():
 
 
 def test_parse_error_no_response_prose():
-    """An <action> block without prose before it must raise."""
+    """An <next_action> block without prose before it must raise."""
     try:
-        parse_action("<action><chat/></action>")
+        parse_action("<next_action><chat/></next_action>")
         assert False, "Should have raised"
     except ActionParseError:
         print("  Parse error (no response prose) OK")
 
 
 def test_parse_error_multiple_action_children():
-    """<action> with more than one child tag must raise."""
+    """<next_action> with more than one child tag must raise."""
     raw = """Hi.
 
-<action><chat/><exec></exec></action>"""
+<next_action><chat/><exec></exec></next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -186,7 +186,7 @@ def test_parse_error_multiple_action_children():
 def test_parse_error_invalid_action():
     raw = """Hi!
 
-<action><fly/></action>"""
+<next_action><fly/></next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -197,11 +197,11 @@ def test_parse_error_invalid_action():
 def test_parse_error_exec_missing_script():
     raw = """R
 
-<action>
+<next_action>
 <exec>
 <code_type>bash</code_type>
 </exec>
-</action>"""
+</next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -212,13 +212,13 @@ def test_parse_error_exec_missing_script():
 def test_parse_error_exec_both_script_and_path():
     raw = """R
 
-<action>
+<next_action>
 <exec>
 <code_type>bash</code_type>
 <script>echo x</script>
 <script_path>/foo</script_path>
 </exec>
-</action>"""
+</next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -230,7 +230,7 @@ def test_parse_error_exec_script_args_empty_arg():
     """An empty <arg></arg> child is invalid — args must be non-empty strings."""
     raw = """R
 
-<action>
+<next_action>
 <exec>
 <code_type>python</code_type>
 <script_path>skills/x.py</script_path>
@@ -239,7 +239,7 @@ def test_parse_error_exec_script_args_empty_arg():
 <arg></arg>
 </script_args>
 </exec>
-</action>"""
+</next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -250,7 +250,7 @@ def test_parse_error_exec_script_args_empty_arg():
 def test_parse_error_exec_script_args_with_script():
     raw = """R
 
-<action>
+<next_action>
 <exec>
 <code_type>bash</code_type>
 <script>echo x</script>
@@ -258,7 +258,7 @@ def test_parse_error_exec_script_args_with_script():
   <arg>--bad</arg>
 </script_args>
 </exec>
-</action>"""
+</next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -269,11 +269,11 @@ def test_parse_error_exec_script_args_with_script():
 def test_parse_error_delegate_missing_role():
     raw = """D
 
-<action>
+<next_action>
 <delegate>
 <objective>o</objective>
 </delegate>
-</action>"""
+</next_action>"""
     try:
         parse_action(raw)
         assert False, "Should have raised"
@@ -284,12 +284,12 @@ def test_parse_error_delegate_missing_role():
 def test_sub_agent_cannot_delegate():
     raw = """D
 
-<action>
+<next_action>
 <delegate>
 <role>r</role>
 <objective>o</objective>
 </delegate>
-</action>"""
+</next_action>"""
     try:
         parse_action(raw, allowed_actions=ALLOWED_SUB_ACTIONS)
         assert False, "Should have raised"
@@ -487,7 +487,7 @@ def test_run_loop_notifies_on_compaction_start():
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return """done
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td), token_limit=200, keep_last_k=2,
@@ -552,7 +552,7 @@ def test_run_loop_chat():
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
             return """Hello user!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -574,7 +574,7 @@ def test_run_loop_reasoning_tokens_never_enter_history():
                 reasoning_callback("AND_NEITHER_SHOULD_THIS")
             final = """Clean answer
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
             if chunk_callback is not None:
                 chunk_callback(final)
             return final
@@ -614,10 +614,10 @@ def test_run_loop_think_then_chat():
             if call_count[0] == 1:
                 return """Let me think...
 
-<action><think/></action>"""
+<next_action><think/></next_action>"""
             return """Done thinking!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -642,7 +642,7 @@ def test_run_loop_parse_retry():
                 return "bad output no tags"
             return """Fixed!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))
@@ -671,12 +671,12 @@ def test_run_loop_parse_retry_observation_reflects_latest_error():
                 return (
                     """x
 
-<action><banana/></action>"""
+<next_action><banana/></next_action>"""
                 )                                                     # invalid next_action
             return (
                 """Finally fixed.
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
             )
 
     with tempfile.TemporaryDirectory() as td:
@@ -753,13 +753,13 @@ def test_run_loop_exec_denied_returns_control():
                 return (
                     """Checking status.
 
-<action>
+<next_action>
 <exec>
 <job_name>check-status</job_name>
 <code_type>bash</code_type>
 <script>echo x</script>
 </exec>
-</action>"""
+</next_action>"""
                 )
             raise AssertionError("run_loop should have unwound before a second agent turn")
 
@@ -809,13 +809,13 @@ def test_run_loop_exec_cancelled_returns_control():
                 return (
                     """Checking status.
 
-<action>
+<next_action>
 <exec>
 <job_name>check-status</job_name>
 <code_type>bash</code_type>
 <script>echo x</script>
 </exec>
-</action>"""
+</next_action>"""
                 )
             # Unreachable under the new semantics; if the test sees call 2
             # something went wrong with the unwind.
@@ -864,7 +864,7 @@ def test_run_loop_transient_error_retries_then_succeeds():
                 raise LLMTransientError("LLM HTTP 503: overloaded", status_code=503)
             return """Recovered!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
 
     with tempfile.TemporaryDirectory() as td:
         env = Environment(workspace=Path(td))

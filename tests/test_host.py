@@ -439,12 +439,12 @@ def test_host_process_message():
         # Mock the model to return a simple chat response
         def mock_generate(messages, *, chunk_callback=None, **_kwargs):
             if chunk_callback is not None:
-                for piece in ("Hello ", "from the agent!\n\n<action><chat/></action>"):
+                for piece in ("Hello ", "from the agent!\n\n<next_action><chat/></next_action>"):
                     chunk_callback(piece)
             return (
                 """Hello from the agent!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
             )
 
         mock_generate = MagicMock(side_effect=mock_generate)
@@ -489,7 +489,7 @@ def test_host_process_message_saves_named_session():
         mock_generate = MagicMock(return_value=(
             """Saved response
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
         ))
         host._model.generate = mock_generate
 
@@ -526,26 +526,26 @@ def test_host_process_exec():
             call_count[0] += 1
             if call_count[0] == 1:
                 if chunk_callback is not None:
-                    for piece in ("Let ", "me check.\n\n<action><exec>...</exec></action>"):
+                    for piece in ("Let ", "me check.\n\n<next_action><exec>...</exec></next_action>"):
                         chunk_callback(piece)
                 return (
                     """Let me check.
 
-<action>
+<next_action>
 <exec>
 <job_name>test-exec</job_name>
 <code_type>bash</code_type>
 <script>echo test-output</script>
 </exec>
-</action>"""
+</next_action>"""
                 )
             if chunk_callback is not None:
-                for piece in ("Do", "ne!\n\n<action><chat/></action>"):
+                for piece in ("Do", "ne!\n\n<next_action><chat/></next_action>"):
                     chunk_callback(piece)
             return (
                 """Done!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
             )
 
         host._model.generate = mock_generate
@@ -613,10 +613,10 @@ def test_host_process_message_discards_parse_failed_preview():
             good = (
                 """Keep this final answer
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
             )
             if chunk_callback is not None:
-                for piece in ("Keep ", "this final answer\n\n<action><chat/></action>"):
+                for piece in ("Keep ", "this final answer\n\n<next_action><chat/></next_action>"):
                     chunk_callback(piece)
             return good
 
@@ -797,24 +797,25 @@ def test_host_effort_forwarded_to_provider():
 
 
 def test_streaming_extractor_partial_no_action_yet():
-    """While streaming, return text up to the holdback so a partial <action>
-    arriving across token boundaries can't leak onto the UI."""
-    # 12 chars; holdback is 7, so 5 chars are safe to print.
-    result = extract_streaming_response("Hello world!")
-    assert result == "Hello"
+    """While streaming, return text up to the holdback so a partial
+    <next_action> arriving across token boundaries can't leak onto the UI.
+    Holdback length is len('<next_action>') - 1 = 12 chars."""
+    # 25 chars; holdback is 12, so 13 chars are safe to print.
+    result = extract_streaming_response("Hello, world! This works.")
+    assert result == "Hello, world!"
     print("  Streaming extractor (partial, no action yet) OK")
 
 
 def test_streaming_extractor_after_action():
-    """Once <action> appears, return everything before it as the response."""
-    result = extract_streaming_response("Hello world\n\n<action><chat/></action>")
+    """Once <next_action> appears, return everything before it as the response."""
+    result = extract_streaming_response("Hello world\n\n<next_action><chat/></next_action>")
     assert result == "Hello world\n\n"
     print("  Streaming extractor (after action) OK")
 
 
 def test_streaming_extractor_holdback_prevents_partial_leak():
-    """A partial <action> at the buffer tail must be held back, not flushed."""
-    # "I'm done.\n\n<a" — the trailing "<a" could be a partial <action>.
+    """A partial <next_action> at the buffer tail must be held back, not flushed."""
+    # "I'm done.\n\n<a" — the trailing "<a" could be a partial <next_action>.
     result = extract_streaming_response("I'm done.\n\n<a")
     # Holdback eats the last 7 chars; only "I'm don" is safe.
     assert result is None or "<a" not in result
@@ -822,7 +823,7 @@ def test_streaming_extractor_holdback_prevents_partial_leak():
 
 
 def test_streaming_extractor_too_short():
-    """Fewer chars than the holdback length and no <action> seen → None."""
+    """Fewer chars than the holdback length and no <next_action> seen → None."""
     result = extract_streaming_response("Hi")
     assert result is None
     print("  Streaming extractor (too short) OK")
@@ -891,7 +892,7 @@ def test_streaming_display_commit_closes_dim_if_active():
     display = StreamingDisplay(output=buf)
     display.reset("core_agent")
     display.on_reasoning("thinking text")
-    display.on_content("final answer here\n\n<action><chat/></action>")
+    display.on_content("final answer here\n\n<next_action><chat/></next_action>")
     display.commit()
     written = buf.getvalue()
     assert "\033[2mthinking> thinking text" in written
@@ -899,10 +900,10 @@ def test_streaming_display_commit_closes_dim_if_active():
     assert "\033[0m\n\n" in written
     # Badge header was written at reset.
     assert "core_agent" in written
-    # Prose was live-streamed up to <action>.
+    # Prose was live-streamed up to <next_action>.
     assert "final answer here" in written
-    # The <action> block itself is suppressed.
-    assert "<action>" not in written
+    # The <next_action> block itself is suppressed.
+    assert "<next_action>" not in written
     assert "<chat" not in written
     # Dim close appears before the badge
     assert written.index("\033[0m\n") < written.index("final answer")

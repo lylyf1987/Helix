@@ -35,8 +35,8 @@ _BADGE = {
 
 # Boundary marker the streaming display watches for. Any token chars after
 # this marker are suppressed from the live UI.
-_ACTION_TAG = "<action>"
-_ACTION_HOLDBACK = len(_ACTION_TAG) - 1  # 7
+_NEXT_ACTION_TAG = "<next_action>"
+_NEXT_ACTION_HOLDBACK = len(_NEXT_ACTION_TAG) - 1  # 12
 
 
 def _write_role_block(role: str, text: str, output: TextIO) -> None:
@@ -116,22 +116,23 @@ def iter_exec_payload_items(payload: dict[str, Any]) -> list[tuple[str, Any]]:
 def extract_streaming_response(partial_text: str) -> Optional[str]:
     """Return the printable portion of a partial response buffer.
 
-    With response-outside-`<action>`, the response prose is everything from
-    the start of the buffer up to (but not including) ``<action>``. While
-    streaming, we hold back the trailing 7 chars (= ``len("<action>") - 1``)
-    so a partial ``<action>`` arriving across token boundaries doesn't leak
-    onto the UI. Once ``<action>`` appears, we return the prose up to it.
+    With response-outside-`<next_action>`, the response prose is everything
+    from the start of the buffer up to (but not including) ``<next_action>``.
+    While streaming, we hold back the trailing 12 chars
+    (= ``len("<next_action>") - 1``) so a partial ``<next_action>`` arriving
+    across token boundaries doesn't leak onto the UI. Once ``<next_action>``
+    appears, we return the prose up to it.
 
     Returns ``None`` only when the buffer is too short to safely flush
-    (less than the holdback length and no ``<action>`` seen yet).
+    (less than the holdback length and no ``<next_action>`` seen yet).
     """
-    idx = partial_text.find(_ACTION_TAG)
+    idx = partial_text.find(_NEXT_ACTION_TAG)
     if idx != -1:
         text = partial_text[:idx]
         return text if text else None
-    if len(partial_text) <= _ACTION_HOLDBACK:
+    if len(partial_text) <= _NEXT_ACTION_HOLDBACK:
         return None
-    return partial_text[: len(partial_text) - _ACTION_HOLDBACK]
+    return partial_text[: len(partial_text) - _NEXT_ACTION_HOLDBACK]
 
 
 # --------------------------------------------------------------------------- #
@@ -145,9 +146,9 @@ class StreamingDisplay:
     Per turn:
       * ``reset(name)`` writes the role badge header and resets state.
       * ``on_reasoning(token)`` streams reasoning tokens live in dim/grey.
-      * ``on_content(token)`` streams response prose live; once ``<action>``
-        is seen, all subsequent tokens are suppressed (they're the
-        structured action block, not user-visible prose).
+      * ``on_content(token)`` streams response prose live; once
+        ``<next_action>`` is seen, all subsequent tokens are suppressed
+        (they're the structured action block, not user-visible prose).
       * ``commit()`` closes the turn with a separator newline.
       * ``discard()`` writes a dim retry cue and resets state for a fresh
         attempt under the same role badge — the previously-streamed prose
@@ -177,19 +178,19 @@ class StreamingDisplay:
         self._write_badge_header()
 
     def on_content(self, token: str) -> None:
-        """Stream a response prose token live, holding back partial `<action>`."""
+        """Stream a response prose token live, holding back partial `<next_action>`."""
         self._close_reasoning()
         self._accumulated += token
         if self._in_action:
             return
 
-        idx = self._accumulated.find(_ACTION_TAG, self._printed_to)
+        idx = self._accumulated.find(_NEXT_ACTION_TAG, self._printed_to)
         if idx != -1:
             self._flush(idx)
             self._in_action = True
             return
 
-        safe_end = len(self._accumulated) - _ACTION_HOLDBACK
+        safe_end = len(self._accumulated) - _NEXT_ACTION_HOLDBACK
         if safe_end > self._printed_to:
             self._flush(safe_end)
 
@@ -243,7 +244,7 @@ class StreamingDisplay:
     def _flush_remaining(self) -> None:
         """Drain any held-back content (the trailing 7-char lookahead).
 
-        Called at end-of-turn when no <action> arrived to release the holdback
+        Called at end-of-turn when no <next_action> arrived to release the holdback
         on its own. Without this, the last 7 chars of the model's reply would
         be silently dropped from the UI.
         """

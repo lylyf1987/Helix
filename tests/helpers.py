@@ -15,20 +15,20 @@ def make_xml_output(
     action_type: str,
     action_input: Mapping[str, Any] | None = None,
 ) -> str:
-    """Build an agent reply: prose, blank line, then the `<action>` block.
+    """Build an agent reply: prose, blank line, then the `<next_action>` block.
 
     Centralizes the format so tests don't drift from the parser's expectations.
     For ``chat`` / ``think`` (no payload), pass ``action_input=None`` and the
-    self-closing form ``<action><chat/></action>`` is emitted. For ``exec``
-    and ``delegate``, pass an ``action_input`` mapping; lists become `<arg>`
-    children, multi-line values get their own line.
+    self-closing form ``<next_action><chat/></next_action>`` is emitted. For
+    ``exec`` and ``delegate``, pass an ``action_input`` mapping; lists become
+    `<arg>` children, multi-line values get their own line.
     """
     if not action_input:
-        return f"{response}\n\n<action><{action_type}/></action>"
+        return f"{response}\n\n<next_action><{action_type}/></next_action>"
     field_lines = "\n".join(_render_field(key, value) for key, value in action_input.items())
     return (
         f"{response}\n\n"
-        f"<action>\n<{action_type}>\n{field_lines}\n</{action_type}>\n</action>"
+        f"<next_action>\n<{action_type}>\n{field_lines}\n</{action_type}>\n</next_action>"
     )
 
 

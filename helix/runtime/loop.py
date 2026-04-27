@@ -137,7 +137,7 @@ def run_loop(
             # rewrite identical content.
             new_parse_error_content = (
                 f"Output parse error: {exc}. "
-                "Please respond with prose followed by a single <action>...</action> block in the XML format described in your system prompt."
+                "Please respond with prose followed by a single <next_action>...</next_action> block in the XML format described in your system prompt."
             )
             if parse_error_turn is None:
                 parse_error_turn = Turn(role="runtime", content=new_parse_error_content)

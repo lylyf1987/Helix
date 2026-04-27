@@ -48,7 +48,7 @@ class ActionParseError(Exception):
 # --------------------------------------------------------------------------- #
 
 
-_ACTION_RE = re.compile(r"<action>\s*(.*?)\s*</action>", re.DOTALL)
+_NEXT_ACTION_RE = re.compile(r"<next_action>\s*(.*?)\s*</next_action>", re.DOTALL)
 _CHILD_RE = re.compile(r"<(\w+)\s*(?:/>|>(.*?)</\1>)", re.DOTALL)
 
 
@@ -116,15 +116,15 @@ def parse_action(
 
         Plain prose response to the latest context, no escaping required.
 
-        <action>
+        <next_action>
           <exec>                              (or <chat/> | <think/> | <delegate>...</delegate>)
             <job_name>...</job_name>
             <code_type>bash</code_type>
             <script>raw multi-line code</script>
           </exec>
-        </action>
+        </next_action>
 
-    The action type is the single child tag of ``<action>``. Self-closing
+    The action type is the single child tag of ``<next_action>``. Self-closing
     forms (``<chat/>``, ``<think/>``) are accepted alongside paired forms
     (``<chat></chat>``). Tag bodies are raw text — no JSON escaping, no
     HTML entities. If a ``<script>`` body must contain its own literal
@@ -133,24 +133,24 @@ def parse_action(
     Raises:
         ActionParseError: on any parsing or validation failure.
     """
-    match = _ACTION_RE.search(raw_llm_output)
+    match = _NEXT_ACTION_RE.search(raw_llm_output)
     if match is None:
         raise ActionParseError(
-            "Missing <action>...</action> block in model response.",
+            "Missing <next_action>...</next_action> block in model response.",
             raw_text=raw_llm_output,
         )
 
     response = raw_llm_output[: match.start()].strip()
     if not response:
         raise ActionParseError(
-            "Missing response prose before <action> block.",
+            "Missing response prose before <next_action> block.",
             raw_text=raw_llm_output,
         )
 
     body = match.group(1).strip()
     if not body:
         raise ActionParseError(
-            "Empty <action> block. Use one of <chat/>, <think/>, "
+            "Empty <next_action> block. Use one of <chat/>, <think/>, "
             "<exec>...</exec>, <delegate>...</delegate>.",
             raw_text=raw_llm_output,
         )
@@ -158,21 +158,21 @@ def parse_action(
     children = list(_CHILD_RE.finditer(body))
     if len(children) == 0:
         raise ActionParseError(
-            "Missing action child tag inside <action>. Use one of "
+            "Missing action child tag inside <next_action>. Use one of "
             "<chat/>, <think/>, <exec>...</exec>, <delegate>...</delegate>.",
             raw_text=raw_llm_output,
         )
     if len(children) > 1:
         names = [c.group(1) for c in children]
         raise ActionParseError(
-            f"<action> must contain exactly one child tag, found {len(children)}: {names}.",
+            f"<next_action> must contain exactly one child tag, found {len(children)}: {names}.",
             raw_text=raw_llm_output,
         )
 
     child = children[0]
     if body[: child.start()].strip() or body[child.end():].strip():
         raise ActionParseError(
-            "<action> body must contain only the child tag, no extra text.",
+            "<next_action> body must contain only the child tag, no extra text.",
             raw_text=raw_llm_output,
         )
 

@@ -53,7 +53,7 @@ class InstrumentedCoreModel:
             return (
                 """The user wants to know the Python version. I should delegate this to a sub-agent who can run a command.
 
-<action><think/></action>"""
+<next_action><think/></next_action>"""
             )
 
         if self.call_count == 2:
@@ -61,20 +61,20 @@ class InstrumentedCoreModel:
             return (
                 """I will delegate the version check to a sub-agent.
 
-<action>
+<next_action>
 <delegate>
 <role>system-inspector</role>
 <objective>Run `python3 --version` and report the Python version number.</objective>
 <context>The user asked what Python version is installed. Run the command and report back the version string.</context>
 </delegate>
-</action>"""
+</next_action>"""
             )
 
         # Turn 3: Use sub-agent result to answer
         return (
             """Based on the sub-agent report, the installed Python version is the one reported in the execution output. The sub-agent successfully ran the version check command.
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
         )
 
 
@@ -98,20 +98,20 @@ class InstrumentedSubModel:
             return (
                 """I will run the python version command to check.
 
-<action>
+<next_action>
 <exec>
 <job_name>check-python-version</job_name>
 <code_type>bash</code_type>
 <script>python3 --version</script>
 </exec>
-</action>"""
+</next_action>"""
             )
 
         # Turn 2: Report results
         return (
             """The Python version check is complete. I have identified the installed Python version from the command output.
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
         )
 
 
@@ -145,18 +145,18 @@ class SharedInstrumentedModel:
                 return (
                     """Running the requested command.
 
-<action>
+<next_action>
 <exec>
 <job_name>gather-info</job_name>
 <code_type>bash</code_type>
 <script>echo Hello from sub-agent && date</script>
 </exec>
-</action>"""
+</next_action>"""
                 )
             return (
                 """Task complete. The command executed successfully and returned: Hello from sub-agent with timestamp.
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
             )
 
         # Core-agent calls
@@ -165,17 +165,17 @@ class SharedInstrumentedModel:
             return (
                 """I need to gather system info. Let me delegate.
 
-<action>
+<next_action>
 <delegate>
 <role>info-gatherer</role>
 <objective>Run echo and date commands, report output.</objective>
 </delegate>
-</action>"""
+</next_action>"""
             )
         return (
             """The sub-agent gathered the system info successfully. The output confirmed the commands ran correctly.
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
         )
 
 
@@ -396,12 +396,12 @@ def run_simulation_scenario_3():
     raw = (
         """test
 
-<action>
+<next_action>
 <delegate>
 <role>x</role>
 <objective>y</objective>
 </delegate>
-</action>"""
+</next_action>"""
     )
     try:
         parse_action(raw, allowed_actions=ALLOWED_SUB_ACTIONS)

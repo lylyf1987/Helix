@@ -226,18 +226,18 @@ def test_full_pipeline_with_skill_exec():
                     return (
                         """Let me check something.
 
-<action>
+<next_action>
 <exec>
 <job_name>test-skill-pipeline</job_name>
 <code_type>bash</code_type>
 <script>echo Skills loaded successfully</script>
 </exec>
-</action>"""
+</next_action>"""
                     )
                 return (
                     """Skills and knowledge are properly loaded!
 
-<action><chat/></action>"""
+<next_action><chat/></next_action>"""
                 )
 
         workspace = Path(td)
