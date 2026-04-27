@@ -260,7 +260,7 @@ Example text-image-to-video:
 
 # Error Handling Rule
 
-1. If the local model service variables are missing, stop internal retries and return control to requester or runtime with the configuration failure.
+1. If the local model service variables are missing, stop internal retries and return control to user or runtime with the configuration failure.
 2. If model preparation fails, do not continue to inference until preparation succeeds.
 3. If output path validation fails, do not retry with the same invalid path; choose a new workspace-local path first.
 4. If image-conditioned generation is requested, do not proceed without a valid workspace-local `--image-path`.

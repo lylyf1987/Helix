@@ -51,7 +51,7 @@ def run_loop(
       * ``LLMTransientError`` and ``CompactionError`` are *runtime-handled*:
         retried at the runtime level with exponential backoff; if retries are
         exhausted, the error is recorded as a ``runtime`` Turn and the loop
-        returns to the requester (user or parent core-agent) without feeding
+        returns to the caller (user or parent core-agent) without feeding
         the error back to the agent. The agent cannot influence infrastructure
         issues, so retry-and-return is the pragmatic default.
       * ``ActionParseError`` is *agent-handled*: the first failure is recorded
@@ -94,7 +94,7 @@ def run_loop(
         except CompactionError as exc:
             msg = (
                 f"Compaction failed after {DEFAULT_COMPACTION_RETRIES} attempts: {exc}. "
-                "Returning to requester."
+                "Returning to caller."
             )
             _print(output, f"runtime> {msg}\n")
             env.record(Turn(role="runtime", content=msg))
@@ -116,7 +116,7 @@ def run_loop(
         except LLMTransientError as exc:
             msg = (
                 f"LLM provider error after {DEFAULT_LLM_RETRIES} attempts: {exc}. "
-                "Returning to requester."
+                "Returning to caller."
             )
             _print(output, f"runtime> {msg}\n")
             env.record(Turn(role="runtime", content=msg))
@@ -147,7 +147,7 @@ def run_loop(
             if consecutive_parse_failures >= DEFAULT_PARSE_RETRIES:
                 msg = (
                     f"Loop ended: {DEFAULT_PARSE_RETRIES} consecutive parse failures. "
-                    "Returning to requester."
+                    "Returning to caller."
                 )
                 _print(output, f"runtime> {msg}\n")
                 env.record(Turn(role="runtime", content=msg))
@@ -396,7 +396,7 @@ def _act_with_retry(
     jitter. Does NOT record anything to the environment — the agent never
     produced output. If all retries are exhausted, the final
     ``LLMTransientError`` is re-raised so the caller (``run_loop``) can
-    record it as a ``runtime`` Turn and return to the requester.
+    record it as a ``runtime`` Turn and return to its own caller.
     """
     last_exc: LLMTransientError | None = None
     for attempt in range(1, DEFAULT_LLM_RETRIES + 1):
@@ -436,7 +436,7 @@ def _build_state_with_retry(
     Retries up to ``DEFAULT_COMPACTION_RETRIES`` times with exponential
     backoff + jitter. If all retries are exhausted, the final
     ``CompactionError`` is re-raised so the caller (``run_loop``) can record
-    it as a ``runtime`` Turn and return to the requester.
+    it as a ``runtime`` Turn and return to its own caller.
     """
     if env.will_compact():
         _print(output, "runtime> Context window full — compacting older chat history...\n")

@@ -281,10 +281,8 @@ def test_delegate_persists_and_restores_state():
         def generate(self, messages, *, chunk_callback=None, **_kwargs):
             call_count[0] += 1
             return (
-                '<output>'
-                '{"response": "Result from call ' + str(call_count[0]) + '.", '
-                '"next_action": "chat", "action_input": {}}'
-                '</output>'
+                f"Result from call {call_count[0]}.\n\n"
+                "<next_action><chat/></next_action>"
             )
 
     with tempfile.TemporaryDirectory() as td:

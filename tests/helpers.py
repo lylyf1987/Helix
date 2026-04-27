@@ -4,42 +4,9 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any, Mapping
 
 from helix.core.state import Turn
 from helix.runtime.sandbox import HostSandboxExecutor
-
-
-def make_xml_output(
-    response: str,
-    action_type: str,
-    action_input: Mapping[str, Any] | None = None,
-) -> str:
-    """Build an agent reply: prose, blank line, then the `<next_action>` block.
-
-    Centralizes the format so tests don't drift from the parser's expectations.
-    For ``chat`` / ``think`` (no payload), pass ``action_input=None`` and the
-    self-closing form ``<next_action><chat/></next_action>`` is emitted. For
-    ``exec`` and ``delegate``, pass an ``action_input`` mapping; lists become
-    `<arg>` children, multi-line values get their own line.
-    """
-    if not action_input:
-        return f"{response}\n\n<next_action><{action_type}/></next_action>"
-    field_lines = "\n".join(_render_field(key, value) for key, value in action_input.items())
-    return (
-        f"{response}\n\n"
-        f"<next_action>\n<{action_type}>\n{field_lines}\n</{action_type}>\n</next_action>"
-    )
-
-
-def _render_field(key: str, value: Any) -> str:
-    if isinstance(value, (list, tuple)):
-        children = "\n".join(f"  <arg>{item}</arg>" for item in value)
-        return f"<{key}>\n{children}\n</{key}>"
-    text = str(value)
-    if "\n" in text:
-        return f"<{key}>\n{text}\n</{key}>"
-    return f"<{key}>{text}</{key}>"
 
 
 def sandbox_executor(payload: dict, workspace: Path) -> Turn:

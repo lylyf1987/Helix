@@ -40,14 +40,14 @@ Do not use as a long discovery loop when user asked for immediate execution and 
    - lead with recommended option and brief rationale
 5. Draft design incrementally:
    - present in small sections (about 200-300 words each)
-   - ask requester to validate each section before continuing
+   - ask user to validate each section before continuing
 6. Verify readiness:
    - confirm open risks, dependencies, and test/verification strategy
    - ask explicit go/no-go before implementation handoff
 7. Optional persistence:
    - if requested, save approved design under workspace (for example `docs/plans/<date>-<topic>-design.md`)
 8. Final reporting:
-   - report the selected direction, key trade-offs, and immediate next step to requester.
+   - report the selected direction, key trade-offs, and immediate next step to user.
 
 # Runtime Contract
 
@@ -63,34 +63,33 @@ If `exec` is used during brainstorming:
 
 No required script template for this skill.
 
-Typical action patterns:
+Typical action patterns (each block is the trailing `<next_action>` you append after your prose response):
 
 1. Ask a focused clarifying question:
-```json
-{
-  "next_action": "chat",
-  "action_input": {}
-}
+```
+<next_action><chat/></next_action>
 ```
 
 2. Synthesize constraints/options internally:
-```json
-{
-  "next_action": "think",
-  "action_input": {}
-}
+```
+<next_action><think/></next_action>
 ```
 
 3. Optional: persist approved design to workspace:
-```json
-{
-  "next_action": "exec",
-  "action_input": {
-    "job_name": "save-design-doc",
-    "code_type": "bash",
-    "script": "mkdir -p docs/plans && cat > docs/plans/2026-02-25-example-design.md <<'EOF'\n# Example Design\n...\nEOF\necho \"saved docs/plans/2026-02-25-example-design.md\""
-  }
-}
+```
+<next_action>
+<exec>
+<job_name>save-design-doc</job_name>
+<code_type>bash</code_type>
+<script>
+mkdir -p docs/plans && cat > docs/plans/2026-02-25-example-design.md <<'EOF'
+# Example Design
+...
+EOF
+echo "saved docs/plans/2026-02-25-example-design.md"
+</script>
+</exec>
+</next_action>
 ```
 
 # Output JSON Shape
@@ -101,10 +100,10 @@ If optional `exec` is used for persistence, stdout should clearly expose the res
 
 # Error Handling Rule
 
-1. If requester intent is still unclear after several clarification turns, present a short assumption set and ask for explicit confirmation.
+1. If user intent is still unclear after several clarification turns, present a short assumption set and ask for explicit confirmation.
 2. If context lookup fails (missing files, permission issues), state the blocker and continue brainstorming with explicit assumptions.
-3. If design persistence fails, return to requester with failure summary and next minimal fix option.
-4. Stop internal looping once design is validated or requester chooses to proceed directly.
+3. If design persistence fails, return to user with failure summary and next minimal fix option.
+4. Stop internal looping once design is validated or user chooses to proceed directly.
 
 # Skill Dependencies
 
@@ -117,4 +116,4 @@ Use dependency skills only when needed:
 
 - "Too simple to design" is an anti-pattern; even small tasks should have a minimal design statement.
 - Keep brainstorming concise and decision-oriented; avoid endless ideation loops.
-- Do not start major implementation until requester confirms design direction.
+- Do not start major implementation until user confirms design direction.

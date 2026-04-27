@@ -590,7 +590,7 @@ def test_host_process_message_runtime_error():
 
 
 def test_host_process_message_discards_parse_failed_preview():
-    """Verify parse-failed streamed text is not shown to the requester."""
+    """Verify parse-failed streamed text is not shown to the caller."""
     with tempfile.TemporaryDirectory() as td:
         host = _make_host(Path(td))
 

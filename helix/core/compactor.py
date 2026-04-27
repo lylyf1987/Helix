@@ -53,7 +53,7 @@ class CompactionError(RuntimeError):
     """Raised when LLM-based context compaction fails after all retries.
 
     The caller (run_loop) should catch this and return control to the
-    requester with a clear message.
+    caller with a clear message.
     """
 
 

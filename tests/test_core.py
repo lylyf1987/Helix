@@ -429,7 +429,7 @@ def test_run_loop_compaction_failure_records_runtime_turn():
 
     The unified error handling contract treats ``CompactionError`` like
     ``LLMTransientError`` — runtime retries with backoff, then on exhaustion
-    records a runtime Turn and returns to the requester (user or parent
+    records a runtime Turn and returns to the caller (user or parent
     core-agent). The agent cannot influence infrastructure issues so there
     is no point feeding the error back into the agent's prompt.
     """
@@ -467,7 +467,7 @@ def test_run_loop_compaction_failure_records_runtime_turn():
             assert "compaction failed" in result.lower()
             assert compactor_model.calls == 3
             assert "compaction failed" in captured.getvalue().lower()
-            # Runtime Turn is appended so the requester sees what happened.
+            # Runtime Turn is appended so the caller sees what happened.
             assert len(env.full_history) == 3
             assert env.full_history[-1].role == "runtime"
             assert "compaction failed" in env.full_history[-1].content.lower()
@@ -889,7 +889,7 @@ def test_run_loop_transient_error_exhausts_retries():
     Under the unified error handling contract, ``LLMTransientError`` is
     runtime-handled: ``_act_with_retry`` retries up to ``DEFAULT_LLM_RETRIES``
     times, then on exhaustion ``run_loop`` catches the exception, records a
-    runtime Turn, and returns a summary string to the requester. The error
+    runtime Turn, and returns a summary string to the caller. The error
     must NOT propagate out of ``run_loop``.
     """
     from helix.providers.openai_compat import LLMTransientError
@@ -912,7 +912,7 @@ def test_run_loop_transient_error_exhausts_retries():
 
         assert "llm provider error" in result.lower()
         assert call_count[0] == DEFAULT_LLM_RETRIES
-        # Runtime Turn is appended so the requester sees what happened.
+        # Runtime Turn is appended so the caller sees what happened.
         assert len(env.full_history) == 2  # user + runtime
         assert env.full_history[-1].role == "runtime"
         assert "llm provider error" in env.full_history[-1].content.lower()

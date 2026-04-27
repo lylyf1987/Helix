@@ -140,15 +140,15 @@ class HostSandboxExecutor:
     # ----- Input / command construction ------------------------------------ #
 
     @staticmethod
-    def _normalize_exec_input(action_input: dict[str, object]) -> tuple[str, bool, str, str, list[str]]:
-        if not isinstance(action_input, dict):
-            raise ValueError("exec action requires dict action_input")
+    def _normalize_exec_input(payload: dict[str, object]) -> tuple[str, bool, str, str, list[str]]:
+        if not isinstance(payload, dict):
+            raise ValueError("exec action requires a dict payload")
 
-        code_type = str(action_input.get("code_type", "bash")).strip().lower()
-        script_path = str(action_input.get("script_path", "")).strip()
-        script = str(action_input.get("script", "")).strip()
+        code_type = str(payload.get("code_type", "bash")).strip().lower()
+        script_path = str(payload.get("script_path", "")).strip()
+        script = str(payload.get("script", "")).strip()
 
-        raw_args = action_input.get("script_args", [])
+        raw_args = payload.get("script_args", [])
         if isinstance(raw_args, (list, tuple)):
             script_args = [str(a) for a in raw_args if str(a).strip()]
         elif isinstance(raw_args, str) and raw_args.strip():

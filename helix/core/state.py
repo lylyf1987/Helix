@@ -16,7 +16,7 @@ class Turn:
     """One entry in the environment timeline.
 
     Roles:
-        - "user"       — requester input
+        - "user"       — user input
         - "core_agent" — core agent response / reasoning
         - "runtime"    — sandbox execution observation (stdout/stderr)
         - "sub_agent"  — sub-agent result returned to parent
